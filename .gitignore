@@ -1,0 +1,30 @@
+# Game files and emulator data never go in this repo
+*.nds
+*.srl
+*.sav
+*.dsv
+*.dsm
+*.dst
+*.ds[0-9]
+game/
+savestates/
+
+# Training output
+checkpoints/
+runs/
+tensorboard_logs/
+*.pt
+*.pth
+*.ckpt
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Editors and OS
+.idea/
+.vscode/
+Thumbs.db
