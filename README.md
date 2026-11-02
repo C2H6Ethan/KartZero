@@ -10,11 +10,11 @@ It starts by crashing into everything. The question is how far it can go from th
 
 **1:27.832 on Figure-8 Circuit**, the time reported by [MarI/O Kart](https://github.com/blayyyyyk/marIOkart), which was rewarded for drifting and snaking. KartZero has to beat it with no coaching.
 
-And if it does, its best run goes onto a real DSi as a ghost, so I can race it myself.
-
 ## Status
 
-Just getting started. Nothing drives yet, which is exactly where it should begin.
+The game's hooked up and the start line is ready. Nothing has learned to drive yet, which is exactly where it should begin.
+
+Curious how it's going? It's all in the [project notes](docs/PROJECT_NOTES.md).
 
 ## Legal stuff
 
