@@ -1,5 +1,6 @@
 """Runs Mario Kart DS in the emulator, with no window and simple controls."""
 
+import ctypes
 import sys
 import time
 from enum import IntFlag
@@ -16,6 +17,9 @@ ROM = ROOT / "game" / "mkds.nds"
 SAVE = ROOT / "game" / "mkds.sav"
 SNAPSHOT = ROOT / "savestates" / "f8c_time_trial.dst"
 WATCH_FRAME_SECONDS = 1 / 60
+USE_JIT_OFFSET = 0xF54FFC5  # in libdesmume.dll from py-desmume-mkds 0.0.20
+JIT_BLOCK_SIZE_DISTANCE = 3
+JIT_DEFAULT_BLOCK_SIZE = 12
 
 
 class Button(IntFlag):
@@ -40,6 +44,7 @@ class Game:
 
     def __init__(self, rom=ROM):
         self._emulator = DeSmuME()
+        self._enable_jit()
         self._emulator.open(str(rom))
         self._emulator.volume_set(0)
         self.kart = Kart(self._emulator.memory)
@@ -47,6 +52,19 @@ class Game:
         self._window = None
         self._held = Button.NONE
         self._next_frame_time = 0.0
+
+    def _enable_jit(self):
+        """Run the game's code as compiled code, about 1.8 times faster with identical results.
+
+        The library has no setting for this, so set the byte the emulator reads. Its place
+        is specific to this exact DLL, so check it looks right before writing to it.
+        """
+        address = self._emulator.lib._handle + USE_JIT_OFFSET
+        use_jit = ctypes.c_ubyte.from_address(address)
+        block_size = ctypes.c_uint32.from_address(address + JIT_BLOCK_SIZE_DISTANCE)
+        if (use_jit.value, block_size.value) != (0, JIT_DEFAULT_BLOCK_SIZE):
+            raise RuntimeError("the emulator's JIT setting isn't where expected: did py-desmume-mkds change version?")
+        use_jit.value = 1
 
     def __enter__(self):
         return self

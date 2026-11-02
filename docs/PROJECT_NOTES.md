@@ -17,9 +17,9 @@ Working:
 The reward is finished: I wrote `kartzero/reward.py`, and its tests pass.
 
 Next steps, in order:
-1. Run the short speed tests below.
-2. Observations and the training step follow the same way as the reward, after checking the clock and collision data they need.
-3. Run a first PPO training baseline, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
+1. Observations and the training step follow the same way as the reward, after checking the clock and collision data they need.
+2. Run a first PPO training baseline, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
+3. Add the live viewer: one extra emulator that keeps playing the latest AI at normal speed, with no exploration, so I can glance at it. Its times can also serve as our test laps.
 
 ## Goal and targets
 
@@ -113,10 +113,19 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 
 | Emulators | Each (frames/s) | Total (frames/s) | Decisions per hour |
 |---:|---:|---:|---:|
-| 1 | 275 | 275 | 248,000 |
-| 8 | 194 | 1,549 | 1.39M |
+| 1 | 451 | 451 | 406,000 |
+| 8 | 297 | 2,379 | 2.14M |
+| 12 | 218 | 2,610 | 2.35M |
+| 16 | 188 | 3,005 | 2.70M |
 
-An earlier Mario and B Dasher snapshot gave 992 frames/s with 4 emulators, and 2,108 with 16. Speed drops per emulator because they share 8 physical cores, though I didn't measure how much each cause contributes. Training will be slower than this because the AI needs time too.
+Speed drops per emulator because they share 8 physical cores, though I didn't measure how much each cause contributes. Training will be slower than this because the AI needs time too.
+
+**Speed tests, all finished:**
+- **JIT mode: kept.** About 1.8 times faster per emulator (about 253 to 452 frames/s), and 8 emulators went from about 1,543 to about 2,335 frames/s in the comparison test. `Game` turns it on, with a check that stops it writing to the wrong place if the library version changes. Compared with the interpreter, 6 random runs of 1,500 decisions matched at every decision, and the test driver's lap timings over a full race were identical.
+- **Larger JIT block size: not used.** Sizes 50 and 100 gave only about 3% more speed. Replays still matched at size 100, so it isn't worth changing from the default of 12.
+- **Turning off graphics: no gain.** With drawing skipped, CPU time matches real time (1.01), so the rendering threads are idle. Turning graphics layers off changed speed by under 1%. Textures can't be skipped safely, because the game's own code handles them and changing that could change the game.
+- **Pinning emulators to CPU cores: no gain.** 8 emulators gave 2,314 frames/s pinned, compared with 2,335 unpinned.
+- **A live viewer: about 2% cost.** 8 emulators plus one extra emulator drawing at 60 frames/s gave 2,296 frames/s, compared with 2,335 without it. This drew frames but opened no window, and it played no AI, so re-measure it with the real viewer.
 
 **Other results:**
 - Snapshot reload: about 119 ms, measured on an earlier snapshot.
@@ -140,7 +149,7 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 - **Items off until we beat 1:27.832.** MarI/O Kart's controls have no item button, so a free boost would make our win unfair. Random presses would also waste the mushroom at the start of most runs, which is reasoning, not a test. Build the button as a setting, try it after we win, and report times with and without items separately.
 - **Figure-8 only.** The best racing results usually come from track-specific training, such as [GT Sophy](https://www.gtplanet.net/gran-turismo-7s-sophy-artificial-intelligence-driving-system-revealed/) and [Fuchs et al.](https://arxiv.org/abs/2008.07971). Transfer results are mixed, and I found no direct comparison on this game. Don't give the AI a track name, so its senses stay usable elsewhere. Testing other tracks is an idea for after the main goal.
 - **Emulator only, no rewrite.** At this speed we don't need a custom simulator.
-- **Training approach.** Keep the environment independent of the algorithm. Start with PPO because it's simpler to learn, then measure a replay-based method such as IQN, because emulator frames are expensive.
+- **Training approach.** Keep the environment independent of the algorithm. Start with PPO because it's simpler to learn, then measure a replay-based method such as IQN, because emulator frames are expensive. Evolution ("breeding") is the other main option: it's left out because it mostly scores whole runs, which gives it less to learn from per race. It's a possible later experiment, not something we've ruled out by testing.
 - **Decisions every 4 frames to start,** with `gamma` set to match. This is a starting guess we can test. Let the kart recover from crashes, within a time limit.
 - **Use the CPU if the GPU ever fails,** because a small network may not need it.
 
@@ -148,6 +157,7 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 
 - The library's `MarioKart` class crashes on Windows because `libdesmume.dll` doesn't export `MMU`. Our `Game` and `Kart` classes use the plain `DeSmuME` class instead.
 - Run one emulator per process. A second one in the same process crashes.
+- JIT is switched on through a memory location specific to this exact DLL. If `py-desmume-mkds` changes version, `Game` stops with an error and the location must be found again.
 - The emulator saves to `mkds.dsv` beside the Python install, not in the project, and all emulators share that path. An old save changes the menus, so `make_start_state.py` deletes it first. A `desmume.ini` didn't move it in either place tested.
 - Menus depend on the save. For example, this save adds a Ghost Data step and a fresh save adds first-run prompts. If the save changes, re-check the menu path.
 - The racer pointer can hold other values while a race loads. Trust it only once the race screen is up.
@@ -155,25 +165,15 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 - Changing the driver through memory during loading works, but it starts the race one frame late, so that method is not for comparisons. The final snapshot doesn't use it.
 - AMD's downloads can fail partway with an SSL error. Download with resume, using `curl -C -`, then install the files.
 
-## Speed tests to run before training
-
-None of these has been tested yet. Today's speed is good enough, so they don't block training.
-
-1. **JIT mode.** The log says `CPU mode: Interpreter`. The library has no setting for it, so this probably needs a rebuilt DLL.
-2. **3D rendering off.** Each emulator starts 16 rendering threads. Check whether they keep working while drawing is skipped.
-3. **Pinning emulators to CPU cores.** Easy to test, but it probably won't raise the total much.
-
-Keep a change only if replays stay identical and the physics don't change.
-
 ## How long training may take
 
-These are guesses until the first real run. They assume about 1M decisions per hour. Only the first row has outside evidence (Linesight on Trackmania, a different game).
+These are guesses until the first real run. They assume about 1.5M decisions per hour, since the AI will slow things below the 2.14M maximum for 8 emulators. Only the first row has outside evidence (Linesight on Trackmania, a different game).
 
 | Milestone | Decisions | Time |
 |---|---:|---:|
-| Finishes races regularly | About 1M | About 1 hour |
-| Beats the staff ghost | 3–10M | 3–10 hours |
-| Beats MarI/O Kart | 10–50M | 10–50 hours |
+| Finishes races regularly | About 1M | About 40 minutes |
+| Beats the staff ghost | 3–10M | 2–7 hours |
+| Beats MarI/O Kart | 10–50M | 7–33 hours |
 
 ## Bugs to test for
 
