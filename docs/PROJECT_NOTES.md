@@ -8,7 +8,7 @@ Where the project stands, and everything we've measured and decided. Last update
 
 **Stage: second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
 
-**A warning about test laps:** with no exploration (always the single likeliest button), that same AI just held reverse, because no one button had high odds (the top was about 37%). So the training numbers don't yet mean it can drive with no exploration. Our real results must come from separate test laps with no exploration, which aren't built yet. The live viewer rolls the dice like training does, so it shows practice, not test results.
+**Official times come from test laps.** Each saved version gets one race with no exploration, always the likeliest button, in `runs/<run>/versions/test_laps.csv`. `watch.py --list` shows them. A separate process runs them, so training doesn't wait, and any untested versions get tested on the next `--resume`. Practice can mislead: the first AI reached 80% with dice rolls but just held reverse on top picks. The live viewer rolls the dice, so it shows practice, not test results.
 
 Working:
 - The `kartzero` package runs the game without a window, presses buttons, and reads kart, race and track data through simple methods.
@@ -20,8 +20,8 @@ The reward, observations and learning maths are finished: I wrote `kartzero/rewa
 
 Next steps, in order:
 1. Watch the first PPO training run, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
-2. Build test laps with no exploration, and record their times during training.
-3. Use the training logs in `runs/` to decide what to adjust.
+2. Watch whether it discovers mini-turbos by itself. A replay at about 14.5 minutes had 0 boosts in 5 races, with the mini-turbo count never above 1. Boosts aren't logged yet.
+3. Use the test laps and training logs in `runs/` to decide what to adjust.
 4. Measure a replay-based method such as IQN against PPO.
 
 ## Goal and targets
@@ -87,6 +87,7 @@ python scripts/speed_check.py
 | `RaceEnvironment` in `kartzero/environment.py` | One race, one decision at a time, and the 12 actions | `reset()`, `step(action)` |
 | `DriverNetwork` in `kartzero/network.py` | Button odds and the guess of future points | `network(observations)` |
 | `Trainer` in `kartzero/learner.py` | Driving the emulators, then learning from each chunk | `run_training(settings, minutes, viewer)` |
+| `run_lap_tester` in `kartzero/test_lap.py` | Driving an official test lap for each saved version, in its own process | `drive_test_lap(network, environment)` |
 | `run_viewer` in `kartzero/viewer.py` | Showing the AI live in a resizable window, rolling the dice like training. It finishes each race before loading the newest AI, so it never switches mid-race | `run_viewer()` |
 | `GameWindow` in `kartzero/window.py` | The window itself. The emulator's own window can't stretch its picture | `show(image)` |
 | `TrackSensors` in `kartzero/sensors.py` | Distances from the kart | `wall_distances(position, heading)`, `road_edge_distances(position, heading)` |

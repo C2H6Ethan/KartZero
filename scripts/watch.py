@@ -28,10 +28,16 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if arguments.list:
-        print("training time    decisions   race progress")
-        for version in latest_store().all():
+        store = latest_store()
+        test_laps = store.test_laps()
+        print("training time    decisions   practice progress   test lap")
+        for version in store.all():
             progress = "-" if math.isnan(version.average_end_progress) else f"{version.average_end_progress:.1%}"
-            print(f"{training_time(version.minutes)}  {version.decisions:11,}   {progress:>6}")
+            lap = test_laps.get(version.file.name)
+            print(
+                f"{training_time(version.minutes)}  {version.decisions:11,}   {progress:>17}   "
+                f"{lap.description() if lap else 'not yet':>8}"
+            )
     elif arguments.hours is not None:
         version = latest_store().closest_to(arguments.hours * 60)
         print(f"watching the AI after {training_time(version.minutes)} of training, {version.decisions:,} decisions")

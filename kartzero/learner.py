@@ -18,6 +18,7 @@ import torch
 from kartzero.environment import ACTIONS, DECISIONS_PER_SECOND, OBSERVATION_SIZE, Step
 from kartzero.game import ROOT
 from kartzero.network import VALUE_SCALE, DriverNetwork
+from kartzero.test_lap import run_lap_tester
 from kartzero.training import advantages, future_points, guess_error, limited_scores
 from kartzero.versions import VersionStore, next_version_after
 from kartzero.worker import run_worker
@@ -27,6 +28,7 @@ MAX_GRADIENT = 0.5
 EPSILON = 1e-8
 SAVE_EVERY_ROUNDS = 5
 PRINT_EVERY_ROUNDS = 5
+LAP_TESTER_STOP_SECONDS = 30
 
 
 @dataclass
@@ -148,8 +150,10 @@ class Trainer:
         )
         os.replace(temporary, LATEST_CHECKPOINT)  # so the viewer never loads a half-written file
 
-    def save_version(self, seconds: float) -> None:
-        self._versions.save(self._driver.state_dict(), self._total_decisions, seconds / 60, self._last_end_progress)
+    def save_version(self, seconds: float) -> Path:
+        return self._versions.save(
+            self._driver.state_dict(), self._total_decisions, seconds / 60, self._last_end_progress
+        )
 
     @property
     def total_decisions(self) -> int:
@@ -282,6 +286,10 @@ def run_training(
         trainer.save_version(0.0)  # the AI before it has learned anything
     trainer.save(trainer.earlier_seconds)
     next_version = next_version_after(trainer.total_decisions)
+    context = mp.get_context("spawn")
+    versions_to_test: "mp.Queue[Optional[Path]]" = context.Queue()
+    lap_tester = context.Process(target=run_lap_tester, args=(versions_to_test, run_folder), daemon=True)
+    lap_tester.start()
     start = time.perf_counter()
     round_number = 0
     log_file = run_folder / "log.csv"
@@ -301,7 +309,7 @@ def run_training(
             writer.writerow(stats)
             file.flush()
             if trainer.total_decisions >= next_version:
-                trainer.save_version(total_seconds)
+                versions_to_test.put(trainer.save_version(total_seconds))
                 next_version = next_version_after(trainer.total_decisions)
             if round_number % SAVE_EVERY_ROUNDS == 0:
                 trainer.save(total_seconds)
@@ -322,4 +330,9 @@ def run_training(
                 break
     trainer.save(trainer.earlier_seconds + (time.perf_counter() - start))
     trainer.stop()
+    # Any lap not finished here gets run on the next --resume, so there's no need to wait long.
+    versions_to_test.put(None)
+    lap_tester.join(timeout=LAP_TESTER_STOP_SECONDS)
+    if lap_tester.is_alive():
+        lap_tester.terminate()
     print(f"results in {run_folder}", flush=True)

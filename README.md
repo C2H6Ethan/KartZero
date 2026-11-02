@@ -89,7 +89,9 @@ This shows the newest saved AI racing, with no training. Close the window to sto
 
 Training keeps old versions of the AI, so you can see how it used to drive. They're saved often at first, then further apart, so a long run ends up with a couple of hundred.
 
-**See every saved version, with its total training time:**
+Every saved version also gets a **test lap**: one race with no randomness, always using its most likely button. Those are the official times. They run by themselves beside training.
+
+**See every saved version, with its total training time and test lap:**
 
 ```bash
 python scripts/watch.py --list
@@ -106,7 +108,7 @@ Time only counts while it's training, and it keeps adding up each time you use `
 ## Good to know
 
 - **The AI in the window won't switch mid-race.** It finishes the race, then loads the newest version.
-- **It rolls the dice on its buttons,** just like in training, so you're watching practice and not its best run.
+- **It rolls the dice on its buttons,** just like in training, so you're watching practice and not an official test lap.
 - **Your PC will be busy while training,** because it runs 8 copies of the game at once.
 - **Results go in `runs/`,** with the numbers in `log.csv` and old versions in `versions/`. The newest AI is saved at `checkpoints/latest.pt`.
 
