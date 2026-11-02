@@ -1,7 +1,7 @@
 """Check live kart data and measure emulator speed, alone and in parallel.
 
 Holding the accelerator from a standing start must raise the speed and move the
-kart. If the memory addresses were wrong for our cartridge, the numbers would not
+kart. If the memory addresses were wrong for our game, the numbers would not
 behave that way. Run make_start_state.py first.
 
 Usage: python scripts/speed_check.py [process counts, default 1 2 4 8 12 16]
@@ -10,52 +10,24 @@ Usage: python scripts/speed_check.py [process counts, default 1 2 4 8 12 16]
 import multiprocessing as mp
 import sys
 import time
-from pathlib import Path
 
-from desmume.controls import Keys, keymask
-from desmume.emulator import DeSmuME
-from desmume.mkds.mkds import RACER_PTR_ADDR, driver_t
+from kartzero.game import Button, Game
 
-ROOT = Path(__file__).resolve().parent.parent
-ROM = ROOT / "game" / "mkds.nds"
-STATE = ROOT / "savestates" / "f8c_time_trial.dst"
-A = keymask(Keys.KEY_A)
-
-SPEED_OFFSET = driver_t.speed.offset
-POSITION_OFFSET = driver_t.position.offset
-FX32_ONE = 4096  # game numbers are fixed point: 4096 means 1.0
 FRAMES = 1800
 
 
-def start_emulator():
-    emu = DeSmuME()
-    emu.open(str(ROM))
-    emu.volume_set(0)
-    emu.savestate.load_file(str(STATE))
-    emu.input.keypad_update(A)
-    return emu
-
-
-def read_kart(emu):
-    mem = emu.memory.signed
-    racer = emu.memory.unsigned.read_long(RACER_PTR_ADDR)
-    speed = mem.read_long(racer + SPEED_OFFSET) / FX32_ONE
-    x = mem.read_long(racer + POSITION_OFFSET) / FX32_ONE
-    z = mem.read_long(racer + POSITION_OFFSET + 8) / FX32_ONE
-    return speed, x, z
-
-
 def worker(ready, go, results):
-    emu = start_emulator()
-    ready.wait()
-    go.wait()
-    start = time.perf_counter()
-    for _ in range(FRAMES):
-        emu.skip_next_frame()
-        emu.cycle(with_joystick=False)
-        read_kart(emu)
-    results.put(FRAMES / (time.perf_counter() - start))
-    emu.destroy()
+    with Game() as game:
+        game.load_snapshot()
+        game.hold(Button.A)
+        ready.wait()
+        go.wait()
+        start = time.perf_counter()
+        for _ in range(FRAMES):
+            game.advance()
+            game.kart.speed()
+            game.kart.position()
+        results.put(FRAMES / (time.perf_counter() - start))
 
 
 def measure_parallel(count):
@@ -73,14 +45,14 @@ def measure_parallel(count):
 
 
 def main():
-    emu = start_emulator()
-    print("speed and position while holding the accelerator:")
-    for second in range(12):
-        for _ in range(60):
-            emu.cycle(with_joystick=False)
-        speed, x, z = read_kart(emu)
-        print(f"  t={second + 1:2d}s speed={speed:7.3f} x={x:9.1f} z={z:9.1f}")
-    emu.destroy()
+    with Game() as game:
+        game.load_snapshot()
+        game.hold(Button.A)
+        print("speed and position while holding the accelerator:")
+        for second in range(12):
+            game.advance(60)
+            x, _, z = game.kart.position()
+            print(f"  t={second + 1:2d}s speed={game.kart.speed():7.3f} x={x:9.1f} z={z:9.1f}")
 
     counts = [int(arg) for arg in sys.argv[1:]] or [1, 2, 4, 8, 12, 16]
     print("processes  each (frames/s)  total (frames/s)  total decisions/hour at 1 per 4 frames")

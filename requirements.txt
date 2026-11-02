@@ -10,3 +10,5 @@ py-desmume-mkds==0.0.20
 # Needed by py-desmume-mkds, which doesn't declare them.
 numpy==2.5.4
 typing_extensions==4.16.0
+
+pytest==8.4.2

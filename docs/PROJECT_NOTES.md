@@ -9,15 +9,17 @@ Where the project stands, and everything we've measured and decided. Last update
 **Stage: setup finished, no training yet.** Nothing has learned to drive.
 
 Working:
-- The game runs without a window, and scripts can press its buttons and read its memory.
+- The `kartzero` package runs the game without a window, presses buttons, and reads kart, race and track data through simple methods.
 - A snapshot starts a Figure-8 Time Trial with Dry Bones in the ROB-BLS and no ghost.
+- Race progress is confirmed good enough for the reward.
 - Replays are identical, and the GPU works with PyTorch.
 
+The reward is finished: I wrote `kartzero/reward.py`, and its tests pass.
+
 Next steps, in order:
-1. Confirm the checkpoint data in memory, because the reward needs it. Also check the clock and collision data.
-2. Run the short speed tests below.
-3. Write failing tests for the reward, then I write the reward. Observations and the training step follow the same way.
-4. Run a first PPO training baseline.
+1. Run the short speed tests below.
+2. Observations and the training step follow the same way as the reward, after checking the clock and collision data they need.
+3. Run a first PPO training baseline, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
 
 ## Goal and targets
 
@@ -38,6 +40,18 @@ MarI/O Kart was rewarded for drifting and snaking. We reward only progress and t
 - **Software:** Python 3.12 in `.venv`, because AMD's PyTorch needs it, and `requirements.txt` pins the packages. `py-desmume-mkds` 0.0.20 runs DeSmuME 0.9.12.
 - **Local files git ignores:** the game goes in `game/mkds.nds`, and a copy of my save goes in `game/mkds.sav`. My real save is backed up on my DS, so the copy can be changed freely.
 
+Install the packages in `requirements.txt`, then install our own package:
+
+```bash
+pip install -e .
+```
+
+Run the tests, which don't need the game:
+
+```bash
+python -m pytest
+```
+
 Build the snapshot:
 
 ```bash
@@ -54,11 +68,24 @@ Re-measure speed:
 python scripts/speed_check.py
 ```
 
+## Code
+
+| Class | Use it for | Examples |
+|---|---|---|
+| `Game` in `kartzero/game.py` | Running the game | `game.start_race()`, `game.hold(Button.A)`, `game.advance(4)`, `game.open_window()` |
+| `Kart` in `kartzero/kart.py`, as `game.kart` | Kart and race data | `speed()`, `position()`, `direction()`, `race_progress()`, `has_finished()`, `lap()`, `checkpoint()` |
+| `Track` in `kartzero/track.py`, as `game.track` | The track layout | `checkpoint_count()`, `checkpoint_center(index)` |
+
+Only one `Game` can run per process. Tests in `tests/` use fake memory.
+
 | Script | What it does |
 |---|---|
 | `scripts/clear_ghosts.py` | Removes personal ghosts from the save copy, leaving only the staff ghost |
 | `scripts/make_start_state.py` | Goes through the menus, checks the driver and kart in memory, and saves the snapshot |
 | `scripts/speed_check.py` | Drives with the accelerator held and measures speed with 1 or more emulators |
+| `scripts/replay_check.py` | Checks that the same buttons give the same result |
+| `scripts/progress_check.py` | Checks race progress by driving forward, reversing and completing laps with a test driver |
+| `scripts/watch_test_driver.py` | Opens a window to watch the test driver race all 3 laps at normal speed |
 | `scripts/boot_check.py` | Takes screenshots while stepping through menus, for working out new menu paths |
 
 ## Measurements
@@ -68,15 +95,26 @@ python scripts/speed_check.py
 **Memory on `AMCE`:**
 - Confirmed: racer pointer and position, plus speed, which is in distance per frame. Speed × 60 matches the distance the kart covers per second.
 - Also confirmed: at the race config pointer + `0x68`, the driver is at offset 0 and the kart at offset 4. Dry Bones is 8, R.O.B. is 11, ROB-BLS is 34, Streamliner is 23.
-- Not confirmed: checkpoints, clock and collision data.
+- Also confirmed: race progress, lap progress, checkpoint and lap, plus the checkpoint positions on the track (see below).
+- Not confirmed: clock and collision data.
 - Wrong: `COURSE_ID_ADDR` read 20 on every screen.
+
+**Race progress, tested by driving:**
+- It runs from 0 at the start line and rises about a third per lap: 0.3333 at the start of lap 2 and 0.6665 at the start of lap 3.
+- Over two laps with the test driver, it rose 1,301 times out of 1,301 samples or held steady, with no drops. The biggest rise was only twice the typical one, so it pays no surprise jumps.
+- Reversing makes it fall. Reversing over the start line makes it negative, smoothly, and driving back over the line brings it up again, also smoothly.
+- **Use race progress for the reward, not lap progress.** Lap progress jumps between 0.99 and 0 at the line.
+- The lap counter reads 0 behind the start line, so it changes from 0 to 1 just after the race starts.
+- Figure-8 has 26 checkpoints, and the test driver passed all of them.
+- The test driver finished all 3 laps in about 2:08, steering only, with no drifting. It isn't a target, but it gives us a rough idea of plain driving. Lap changes came at the same times with and without the window.
+- **The finish:** race progress passes 1.0 (1.0002) and the lap counter goes to 4. **The game then drives the kart by itself and progress keeps rising** (1.1096 ten seconds later), and it used the mushroom. So a run must end the moment progress reaches 1.0, or the AI collects points for driving it didn't do.
 
 **Emulator speed, with drawing off and no AI running.** At one decision per 4 frames, decisions per hour = frames per second × 3,600 ÷ 4.
 
 | Emulators | Each (frames/s) | Total (frames/s) | Decisions per hour |
 |---:|---:|---:|---:|
-| 1 | 271 | 271 | 244,000 |
-| 8 | 193 | 1,542 | 1.39M |
+| 1 | 275 | 275 | 248,000 |
+| 8 | 194 | 1,549 | 1.39M |
 
 An earlier Mario and B Dasher snapshot gave 992 frames/s with 4 emulators, and 2,108 with 16. Speed drops per emulator because they share 8 physical cores, though I didn't measure how much each cause contributes. Training will be slower than this because the AI needs time too.
 
@@ -96,6 +134,7 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 
 ## Decisions
 
+- **Reward numbers: 2000 points per unit of race progress, minus 0.25 per decision.** I chose these: the per-decision values are small, stuck is -0.25, reversing -0.77, test driver pace +0.79, and MarI/O Kart pace +1.27. They're a first choice to test in training. Only the ratio changes which runs rank higher.
 - **Dry Bones in the ROB-BLS.** MarI/O Kart's video shows this pair, which keeps the comparison fair. Its code doesn't name them. A fan wiki lists the record holder using it too. The save has all 36 karts for every driver, and ROB-BLS is kart 7 for Dry Bones. MarI/O Kart's code loads a complete save called `100percent.sav`, which is likely how it got the pair. We won't download someone else's save.
 - **No ghost in the race.** The menu is set to Ghost Data: None, and my personal ghosts are removed from our copy.
 - **Items off until we beat 1:27.832.** MarI/O Kart's controls have no item button, so a free boost would make our win unfair. Random presses would also waste the mushroom at the start of most runs, which is reasoning, not a test. Build the button as a setting, try it after we win, and report times with and without items separately.
@@ -103,11 +142,11 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 - **Emulator only, no rewrite.** At this speed we don't need a custom simulator.
 - **Training approach.** Keep the environment independent of the algorithm. Start with PPO because it's simpler to learn, then measure a replay-based method such as IQN, because emulator frames are expensive.
 - **Decisions every 4 frames to start,** with `gamma` set to match. This is a starting guess we can test. Let the kart recover from crashes, within a time limit.
-- **Hide the emulator behind our own small interface,** and use the CPU if the GPU ever fails, because a small network may not need it.
+- **Use the CPU if the GPU ever fails,** because a small network may not need it.
 
 ## Emulator traps
 
-- The library's `MarioKart` class crashes on Windows because `libdesmume.dll` doesn't export `MMU`. Use the plain `DeSmuME` class with `emu.memory`, and write our own kart data reader.
+- The library's `MarioKart` class crashes on Windows because `libdesmume.dll` doesn't export `MMU`. Our `Game` and `Kart` classes use the plain `DeSmuME` class instead.
 - Run one emulator per process. A second one in the same process crashes.
 - The emulator saves to `mkds.dsv` beside the Python install, not in the project, and all emulators share that path. An old save changes the menus, so `make_start_state.py` deletes it first. A `desmume.ini` didn't move it in either place tested.
 - Menus depend on the save. For example, this save adds a Ghost Data step and a fresh save adds first-run prompts. If the save changes, re-check the menu path.
