@@ -111,17 +111,17 @@ def test_true_and_false_become_one_and_zero(numbers):
 
 
 def test_held_buttons_come_next(numbers):
-    # A, B, R, LEFT, RIGHT, with A and R held.
-    assert numbers[7:12].tolist() == [1.0, 0.0, 1.0, 0.0, 0.0]
+    # A, R, LEFT, RIGHT, with A and R held.
+    assert numbers[7:11].tolist() == [1.0, 1.0, 0.0, 0.0]
 
 
 def test_distances_are_scaled(numbers):
-    assert numbers[12:16] == pytest.approx([1.0, 0.5, 0.25, 0.1])
+    assert numbers[11:15] == pytest.approx([1.0, 0.5, 0.25, 0.1])
 
 
 def test_checkpoints_ahead_wrap_around_the_end_of_the_lap(numbers):
-    assert numbers[16:] == pytest.approx([0.1, 0.0, 0.2, 0.5, 0.4, -0.5])
+    assert numbers[15:] == pytest.approx([0.1, 0.0, 0.2, 0.5, 0.4, -0.5])
 
 
 def test_nothing_extra_is_included(numbers):
-    assert len(numbers) == 22
+    assert len(numbers) == 21

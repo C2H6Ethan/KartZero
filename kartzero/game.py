@@ -9,10 +9,11 @@ from types import TracebackType
 from typing import Optional, Self, Union
 
 from desmume.controls import Keys, keymask
-from desmume.emulator import DeSmuME, DeSmuME_SDL_Window
+from desmume.emulator import DeSmuME
 
 from kartzero.kart import Kart
 from kartzero.track import Track
+from kartzero.window import GameWindow
 
 ROOT = Path(__file__).resolve().parent.parent
 ROM = ROOT / "game" / "mkds.nds"
@@ -53,8 +54,7 @@ class Game:
         self._emulator.volume_set(0)
         self.kart = Kart(self._emulator.memory)
         self.track = Track(self._emulator.memory)
-        self._window: Optional[DeSmuME_SDL_Window] = None
-        self._held = Button.NONE
+        self._window: Optional[GameWindow] = None
         self._next_frame_time = 0.0
 
     def _enable_jit(self) -> None:
@@ -82,6 +82,8 @@ class Game:
         self.close()
 
     def close(self) -> None:
+        if self._window:
+            self._window.close()
         self._emulator.destroy()
 
     def load_save(self, save: FilePath = SAVE) -> None:
@@ -107,14 +109,13 @@ class Game:
 
     def open_window(self) -> None:
         """Show the game in a window. It then runs at normal speed, so this is only for watching."""
-        self._window = self._emulator.create_sdl_window()
+        self._window = GameWindow()
 
     def window_closed(self) -> bool:
-        return self._window is not None and self._window.has_quit()
+        return self._window is not None and self._window.closed
 
     def hold(self, buttons: Button) -> None:
         """Hold exactly these buttons until told otherwise."""
-        self._held = buttons
         self._emulator.input.keypad_update(int(buttons))
 
     def advance(self, frames: int = 1, draw: bool = False) -> None:
@@ -127,11 +128,9 @@ class Game:
                     self._emulator.skip_next_frame()
                 self._emulator.cycle(with_joystick=False)
 
-    def _advance_in_window(self, window: DeSmuME_SDL_Window) -> None:
-        window.process_input()
-        self._emulator.input.keypad_update(int(self._held))  # the window reads the keyboard too
+    def _advance_in_window(self, window: GameWindow) -> None:
         self._emulator.cycle(with_joystick=False)
-        window.draw()
+        window.show(self._emulator.screenshot())
         self._next_frame_time = max(self._next_frame_time, time.perf_counter() - WATCH_FRAME_SECONDS)
         self._next_frame_time += WATCH_FRAME_SECONDS
         time.sleep(max(0.0, self._next_frame_time - time.perf_counter()))

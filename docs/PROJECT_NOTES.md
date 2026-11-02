@@ -6,7 +6,9 @@ Where the project stands, and everything we've measured and decided. Last update
 
 ## Where we are now
 
-**Stage: setup finished, no training yet.** Nothing has learned to drive.
+**Stage: second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
+
+**A warning about test laps:** with no exploration (always the single likeliest button), that same AI just held reverse, because no one button had high odds (the top was about 37%). So the training numbers don't yet mean it can drive with no exploration. Our real results must come from separate test laps with no exploration, which aren't built yet. The live viewer rolls the dice like training does, so it shows practice, not test results.
 
 Working:
 - The `kartzero` package runs the game without a window, presses buttons, and reads kart, race and track data through simple methods.
@@ -14,12 +16,13 @@ Working:
 - Race progress is confirmed good enough for the reward.
 - Replays are identical, and the GPU works with PyTorch.
 
-The reward and observations are finished: I wrote `kartzero/reward.py` and `kartzero/observation.py`, and their tests pass.
+The reward, observations and learning maths are finished: I wrote `kartzero/reward.py`, `kartzero/observation.py` and `kartzero/training.py`, and their tests pass.
 
 Next steps, in order:
-1. Write the training environment and the core training step. I write the key part against failing tests.
-2. Run a first PPO training baseline, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
-3. Add the live viewer: one extra emulator that keeps playing the latest AI at normal speed, with no exploration, so I can glance at it. Its times can also serve as our test laps.
+1. Watch the first PPO training run, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
+2. Build test laps with no exploration, and record their times during training.
+3. Use the training logs in `runs/` to decide what to adjust.
+4. Measure a replay-based method such as IQN against PPO.
 
 ## Goal and targets
 
@@ -81,6 +84,11 @@ python scripts/speed_check.py
 | `Game` in `kartzero/game.py` | Running the game | `game.start_race()`, `game.hold(Button.A)`, `game.advance(4)`, `game.open_window()` |
 | `Kart` in `kartzero/kart.py`, as `game.kart` | Kart and race data | `speed()`, `position()`, `heading()`, `drift_angle()`, `turning_rate()`, `mini_turbo_count()`, `boost_time_left()`, `is_off_road()`, `is_on_ground()`, `race_progress()`, `has_finished()`, `lap()`, `checkpoint()` |
 | `Track` in `kartzero/track.py`, as `game.track` | The track layout | `checkpoint_count()`, `checkpoint_center(index)`, `collision_triangles()` |
+| `RaceEnvironment` in `kartzero/environment.py` | One race, one decision at a time, and the 12 actions | `reset()`, `step(action)` |
+| `DriverNetwork` in `kartzero/network.py` | Button odds and the guess of future points | `network(observations)` |
+| `Trainer` in `kartzero/learner.py` | Driving the emulators, then learning from each chunk | `run_training(settings, minutes, viewer)` |
+| `run_viewer` in `kartzero/viewer.py` | Showing the AI live in a resizable window, rolling the dice like training. It finishes each race before loading the newest AI, so it never switches mid-race | `run_viewer()` |
+| `GameWindow` in `kartzero/window.py` | The window itself. The emulator's own window can't stretch its picture | `show(image)` |
 | `TrackSensors` in `kartzero/sensors.py` | Distances from the kart | `wall_distances(position, heading)`, `road_edge_distances(position, heading)` |
 
 Only one `Game` can run per process. Tests in `tests/` use fake memory.
@@ -92,6 +100,8 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 | `scripts/speed_check.py` | Drives with the accelerator held and measures speed with 1 or more emulators |
 | `scripts/replay_check.py` | Checks that the same buttons give the same result |
 | `scripts/progress_check.py` | Checks race progress by driving forward, reversing and completing laps with a test driver |
+| `scripts/train.py` | Trains on 8 emulators with a live window. Closing the window stops training and saves. Results go in `runs/`, and the newest AI in `checkpoints/latest.pt`. Add `--resume` to carry on the same run from that save |
+| `scripts/watch.py` | Shows the newest saved AI racing in the window, with no training. `--list` shows old versions, and `--hours 30` plays the one nearest 30 hours of training |
 | `scripts/observation_check.py` | Builds the AI's inputs through a real race, and shows the range of each one |
 | `scripts/sensor_check.py` | Checks the kart readings and sensors on the real game, and draws a map to check by eye |
 | `scripts/watch_test_driver.py` | Opens a window to watch the test driver race all 3 laps at normal speed |
@@ -139,6 +149,8 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 
 Speed drops per emulator because they share 8 physical cores, though I didn't measure how much each cause contributes. Training will be slower than this because the AI needs time too.
 
+**During real training, with the AI running on 8 emulators:** about 1.29M decisions per hour, measured over 2 minutes with no viewer. That's slower than the 2.14M with no AI, so the time guesses below may need adjusting.
+
 **Speed tests, all finished:**
 - **JIT mode: kept.** About 1.8 times faster per emulator (about 253 to 452 frames/s), and 8 emulators went from about 1,543 to about 2,335 frames/s in the comparison test. `Game` turns it on, with a check that stops it writing to the wrong place if the library version changes. Compared with the interpreter, 6 random runs of 1,500 decisions matched at every decision, and the test driver's lap timings over a full race were identical.
 - **Larger JIT block size: not used.** Sizes 50 and 100 gave only about 3% more speed. Replays still matched at size 100, so it isn't worth changing from the default of 12.
@@ -162,6 +174,8 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 
 ## Decisions
 
+- **No reverse button.** The first AI got stuck driving in reverse. MarI/O Kart's controls had no reverse either, so the comparison stays fair, and the AI can still slow down by letting go of A. This changes the buttons, not the reward, so it's still self-taught. That leaves 9 actions and 35 inputs.
+- **Old versions are kept.** Each is saved 3% later than the last, and at least 25,000 decisions apart, so about 200 by 100 million decisions, in `runs/<run>/versions/`. Each records its total training time, which only counts time spent training and adds up across resumes. Each is about 0.6 MB.
 - **First list of what the AI senses (`kartzero/observation.py`).** Speed, drift angle, turning rate, mini-turbo count, boost time left, off-road, on the ground, the buttons held, 9 wall distances, 9 road edge distances, and the distance and angle to the next 3 checkpoints. That's 36 numbers, all relative to the kart, with no map position and no track name. Only add something if training shows a need, because changing the inputs usually means restarting training.
 - **Reward numbers: 2000 points per unit of race progress, minus 0.25 per decision.** I chose these: the per-decision values are small, stuck is -0.25, reversing -0.77, test driver pace +0.79, and MarI/O Kart pace +1.27. They're a first choice to test in training. Only the ratio changes which runs rank higher.
 - **Dry Bones in the ROB-BLS.** MarI/O Kart's video shows this pair, which keeps the comparison fair. Its code doesn't name them. A fan wiki lists the record holder using it too. The save has all 36 karts for every driver, and ROB-BLS is kart 7 for Dry Bones. MarI/O Kart's code loads a complete save called `100percent.sav`, which is likely how it got the pair. We won't download someone else's save.

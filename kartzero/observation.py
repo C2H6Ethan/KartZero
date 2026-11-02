@@ -16,7 +16,7 @@ TURNING_SCALE = 300.0  # measured turning rate reached about 300
 MINI_TURBO_SCALE = 4.0  # a mini-turbo was ready at a count of 4
 BOOST_SCALE = 55.0  # a mini-turbo gave 55 frames of boost
 
-BUTTONS = (Button.A, Button.B, Button.R, Button.LEFT, Button.RIGHT)
+BUTTONS = (Button.A, Button.R, Button.LEFT, Button.RIGHT)
 CHECKPOINTS_AHEAD = (1, 2, 3)
 
 
