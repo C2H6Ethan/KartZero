@@ -12,3 +12,22 @@ packages = ["kartzero"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["kartzero", "scripts", "tests"]
+disallow_untyped_defs = true
+check_untyped_defs = true
+mypy_path = "tests"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = "desmume.*"
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["test_kart", "test_observation", "test_reward", "test_sensors", "test_track"]
+disallow_untyped_defs = false
+check_untyped_defs = false
+

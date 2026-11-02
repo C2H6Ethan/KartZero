@@ -12,7 +12,7 @@ GHOST_SIZE = 0xE00
 COURSE_COUNT = 32
 
 
-def main():
+def main() -> None:
     data = bytearray(SAVE.read_bytes())
     removed = 0
     for course in range(COURSE_COUNT):

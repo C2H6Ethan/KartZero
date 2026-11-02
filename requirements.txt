@@ -12,3 +12,4 @@ numpy==2.5.4
 typing_extensions==4.16.0
 
 pytest==8.4.2
+mypy==2.4.1

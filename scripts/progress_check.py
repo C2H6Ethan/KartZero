@@ -8,6 +8,7 @@ this driver. Run make_start_state.py first.
 from dataclasses import dataclass
 
 from kartzero.game import Button, Game
+from kartzero.kart import Kart
 from kartzero.test_driver import TestDriver
 
 FRAMES_PER_SAMPLE = 4
@@ -23,11 +24,11 @@ class Sample:
     lap: int
 
 
-def take_sample(kart):
+def take_sample(kart: Kart) -> Sample:
     return Sample(kart.race_progress(), kart.lap_progress(), kart.checkpoint(), kart.lap())
 
 
-def show(title, game, seconds):
+def show(title: str, game: Game, seconds: int) -> None:
     print(f"\n{title}")
     for second in range(seconds):
         game.advance(60)
@@ -38,7 +39,7 @@ def show(title, game, seconds):
         )
 
 
-def drive_laps(game):
+def drive_laps(game: Game) -> None:
     count = game.track.checkpoint_count()
     print(f"\nTest driver: {count} checkpoints on this track")
     game.start_race()
@@ -65,7 +66,7 @@ def drive_laps(game):
     print(f"  checkpoints seen {len({sample.checkpoint for sample in history})} of {count}")
 
 
-def main():
+def main() -> None:
     with Game() as game:
         game.start_race()
         show("Accelerator: race progress should rise", game, 5)

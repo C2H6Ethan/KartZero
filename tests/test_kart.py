@@ -1,5 +1,7 @@
 """Tests for reading kart data, using fake memory so that no game file is needed."""
 
+import math
+
 import pytest
 from desmume.mkds.mkds import (
     RACE_CONFIG_PTR_ADDR,
@@ -81,6 +83,41 @@ def test_progress_reads_from_our_entry_and_can_be_negative(method, field):
 def test_has_finished_at_the_line_and_past_it(progress, finished):
     address = PLAYER_ADDRESS + race_driver_status_t.raceProgress.offset
     assert make_kart({address: int(progress * FX32_ONE)}).has_finished() == finished
+
+
+def racer_field(field, value):
+    return {RACER_ADDRESS + field.offset: value}
+
+
+def test_heading_is_the_angle_of_the_direction():
+    start = RACER_ADDRESS + driver_t.direction.offset
+    kart = make_kart({start: 0, start + 4: 0, start + 8: FX32_ONE})
+    assert kart.heading() == pytest.approx(math.pi / 2)
+
+
+def test_drift_angle_is_in_degrees_and_keeps_its_side():
+    assert make_kart(racer_field(driver_t.driftRotY, -16384)).drift_angle() == pytest.approx(-90)
+
+
+def test_turning_rate_and_drift_counters_are_plain_numbers():
+    kart = make_kart(
+        racer_field(driver_t.yRotSpeed, -149)
+        | racer_field(driver_t.driftLeftRightCount, 4)
+        | racer_field(driver_t.boostTimer, 30)
+    )
+    assert kart.turning_rate() == -149
+    assert kart.mini_turbo_count() == 4
+    assert kart.boost_time_left() == 30
+
+
+@pytest.mark.parametrize("floor_type, off_road", [(0, False), (3, True)])
+def test_is_off_road_depends_on_the_floor_type(floor_type, off_road):
+    assert make_kart(racer_field(driver_t.floorColType, floor_type)).is_off_road() == off_road
+
+
+@pytest.mark.parametrize("value, on_ground", [(0, True), (3, True), (-1, False)])
+def test_is_on_ground_is_false_in_the_air(value, on_ground):
+    assert make_kart(racer_field(driver_t.floorDriverColType, value)).is_on_ground() == on_ground
 
 
 def test_checkpoint_and_lap_are_whole_numbers():

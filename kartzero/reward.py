@@ -8,7 +8,7 @@ from kartzero.kart import FINISH_PROGRESS
 class Reward:
     """Scores one decision at a time. It only uses what it's given, so it keeps no state."""
 
-    def score(self, progress_before, progress_now):
+    def score(self, progress_before: float, progress_now: float) -> float:
         """The reward for one decision, given race_progress before and after it."""
         if progress_before >= FINISH_PROGRESS:
             raise ValueError("progress_before must be below " + str(FINISH_PROGRESS))

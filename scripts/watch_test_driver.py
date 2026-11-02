@@ -13,7 +13,7 @@ MAX_SECONDS = 300
 SECONDS_AFTER_FINISH = 10
 
 
-def main():
+def main() -> None:
     with Game() as game:
         game.open_window()
         game.start_race()

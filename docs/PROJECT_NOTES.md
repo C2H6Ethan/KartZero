@@ -14,10 +14,10 @@ Working:
 - Race progress is confirmed good enough for the reward.
 - Replays are identical, and the GPU works with PyTorch.
 
-The reward is finished: I wrote `kartzero/reward.py`, and its tests pass.
+The reward and observations are finished: I wrote `kartzero/reward.py` and `kartzero/observation.py`, and their tests pass.
 
 Next steps, in order:
-1. Observations and the training step follow the same way as the reward, after checking the clock and collision data they need.
+1. Write the training environment and the core training step. I write the key part against failing tests.
 2. Run a first PPO training baseline, and compare it with my prediction: it learns from corners going badly and stops picking the moves that led there.
 3. Add the live viewer: one extra emulator that keeps playing the latest AI at normal speed, with no exploration, so I can glance at it. Its times can also serve as our test laps.
 
@@ -52,6 +52,12 @@ Run the tests, which don't need the game:
 python -m pytest
 ```
 
+Check the types:
+
+```bash
+python -m mypy
+```
+
 Build the snapshot:
 
 ```bash
@@ -73,8 +79,9 @@ python scripts/speed_check.py
 | Class | Use it for | Examples |
 |---|---|---|
 | `Game` in `kartzero/game.py` | Running the game | `game.start_race()`, `game.hold(Button.A)`, `game.advance(4)`, `game.open_window()` |
-| `Kart` in `kartzero/kart.py`, as `game.kart` | Kart and race data | `speed()`, `position()`, `direction()`, `race_progress()`, `has_finished()`, `lap()`, `checkpoint()` |
-| `Track` in `kartzero/track.py`, as `game.track` | The track layout | `checkpoint_count()`, `checkpoint_center(index)` |
+| `Kart` in `kartzero/kart.py`, as `game.kart` | Kart and race data | `speed()`, `position()`, `heading()`, `drift_angle()`, `turning_rate()`, `mini_turbo_count()`, `boost_time_left()`, `is_off_road()`, `is_on_ground()`, `race_progress()`, `has_finished()`, `lap()`, `checkpoint()` |
+| `Track` in `kartzero/track.py`, as `game.track` | The track layout | `checkpoint_count()`, `checkpoint_center(index)`, `collision_triangles()` |
+| `TrackSensors` in `kartzero/sensors.py` | Distances from the kart | `wall_distances(position, heading)`, `road_edge_distances(position, heading)` |
 
 Only one `Game` can run per process. Tests in `tests/` use fake memory.
 
@@ -85,6 +92,8 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 | `scripts/speed_check.py` | Drives with the accelerator held and measures speed with 1 or more emulators |
 | `scripts/replay_check.py` | Checks that the same buttons give the same result |
 | `scripts/progress_check.py` | Checks race progress by driving forward, reversing and completing laps with a test driver |
+| `scripts/observation_check.py` | Builds the AI's inputs through a real race, and shows the range of each one |
+| `scripts/sensor_check.py` | Checks the kart readings and sensors on the real game, and draws a map to check by eye |
 | `scripts/watch_test_driver.py` | Opens a window to watch the test driver race all 3 laps at normal speed |
 | `scripts/boot_check.py` | Takes screenshots while stepping through menus, for working out new menu paths |
 
@@ -96,7 +105,17 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 - Confirmed: racer pointer and position, plus speed, which is in distance per frame. Speed × 60 matches the distance the kart covers per second.
 - Also confirmed: at the race config pointer + `0x68`, the driver is at offset 0 and the kart at offset 4. Dry Bones is 8, R.O.B. is 11, ROB-BLS is 34, Streamliner is 23.
 - Also confirmed: race progress, lap progress, checkpoint and lap, plus the checkpoint positions on the track (see below).
-- Not confirmed: clock and collision data.
+- Also confirmed by driving: `driftRotY` (about ±60° in a full drift), `driftLeftRightCount` (mini-turbo ready at 4), `boostTimer` (55 frames from a mini-turbo), `yRotSpeed` (read it as signed), `floorColType` (0 road and 3 off-road on Figure-8), and `floorDriverColType` (-1 in the air).
+- Not useful for sliding: `direction`, `drivingDirection` and `velocity` barely differ in a drift, so we use `driftRotY`.
+- Not confirmed: the clock.
+
+**Sensors, tested on the game:**
+- Wall sensor: 4 crashes all read 10.5 to 10.8 on the nearest wall, which is the kart's size. It never read a wall touching the kart in a race with no crashes. The thin wall pieces above the road don't block it.
+- Road edge sensor: paints the road on a top-down grid once, then walks along each ray until the surface changes. Off the road it measures the way back. It agreed with the game's floor type at 97.5% of decisions in a full race, and it's accurate to about two grid squares (8 units). My first version, using triangle sides, gave false edges inside the road and was replaced.
+- Cost: both sensors every decision lower speed from 495 to 479 frames/s (about 3%).
+- The track has 902 collision triangles, and reading them is fast.
+- Observations on the real game: all 36 inputs arrive in a full race with no invalid values, at 475 frames/s for one emulator. Distances to the second and third checkpoints reach 1.58 and 2.42 on long straights, above the usual -1 to 1. I kept that for now and can scale it if training suffers.
+- AI runs never receive images. `scripts/sensor_check.py` draws a map only for checking the sensors by eye.
 - Wrong: `COURSE_ID_ADDR` read 20 on every screen.
 
 **Race progress, tested by driving:**
@@ -143,6 +162,7 @@ The wiki points to driver weight and a hidden off-road penalty, but the cause is
 
 ## Decisions
 
+- **First list of what the AI senses (`kartzero/observation.py`).** Speed, drift angle, turning rate, mini-turbo count, boost time left, off-road, on the ground, the buttons held, 9 wall distances, 9 road edge distances, and the distance and angle to the next 3 checkpoints. That's 36 numbers, all relative to the kart, with no map position and no track name. Only add something if training shows a need, because changing the inputs usually means restarting training.
 - **Reward numbers: 2000 points per unit of race progress, minus 0.25 per decision.** I chose these: the per-decision values are small, stuck is -0.25, reversing -0.77, test driver pace +0.79, and MarI/O Kart pace +1.27. They're a first choice to test in training. Only the ratio changes which runs rank higher.
 - **Dry Bones in the ROB-BLS.** MarI/O Kart's video shows this pair, which keeps the comparison fair. Its code doesn't name them. A fan wiki lists the record holder using it too. The save has all 36 karts for every driver, and ROB-BLS is kart 7 for Dry Bones. MarI/O Kart's code loads a complete save called `100percent.sav`, which is likely how it got the pair. We won't download someone else's save.
 - **No ghost in the race.** The menu is set to Ghost Data: None, and my personal ghosts are removed from our copy.

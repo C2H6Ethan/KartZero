@@ -7,6 +7,7 @@ Run make_start_state.py first.
 import random
 
 from kartzero.game import Button, Game
+from kartzero.kart import Vector3
 
 RUNS = 4
 DECISIONS = 300
@@ -21,7 +22,7 @@ CHOICES = [
 ]
 
 
-def run(game, plan):
+def run(game: Game, plan: list[Button]) -> list[Vector3]:
     game.start_race()
     trace = []
     for buttons in plan:
@@ -31,7 +32,7 @@ def run(game, plan):
     return trace
 
 
-def main():
+def main() -> None:
     plan = random.Random(1).choices(CHOICES, k=DECISIONS)
     with Game() as game:
         traces = [run(game, plan) for _ in range(RUNS)]

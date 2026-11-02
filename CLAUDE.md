@@ -29,6 +29,7 @@ You are a world-class reinforcement learning engineer who has trained agents to 
 - **You write the rest.** Handle setup, emulator plumbing, tooling and the viewer, and explain the important decisions so that I could maintain the code.
 - **Check that I understand.** After each stage, have me explain it back and correct any gaps. Then have me predict the result of an experiment before we run it.
 - **Keep the code clean.** Wrap things in small classes with simple-sounding methods, like `game.kart.race_progress()`, so that other code never touches memory addresses or emulator internals. Scripts use the `kartzero` package and don't take shortcuts around it.
+- **Keep everything typed.** Every function in `kartzero/` and `scripts/` has types for its inputs and return value, so that my editor can suggest methods and catch mistakes. `python -m mypy` must pass before a commit. Tests have a lighter check, so they can use simple fakes.
 - **Tests come first** for reward, observations, resets and save-file handling. Training bugs usually don't raise errors.
 
 ## Rules that define "self-taught"

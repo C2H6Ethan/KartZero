@@ -1,4 +1,4 @@
-﻿"""Boot the game with no window and screenshot it, to see what a menu script must do.
+"""Boot the game with no window and screenshot it, to see what a menu script must do.
 
 Usage: python scripts/boot_check.py OUT_DIR [wait:BUTTON ...]
 Example: python scripts/boot_check.py shots 360:A 110:DOWN
@@ -13,7 +13,7 @@ from kartzero.game import SAVE, Button, Game
 FRAMES_AFTER_TAP = 30
 
 
-def main():
+def main() -> None:
     out_dir = Path(sys.argv[1])
     with Game() as game:
         if SAVE.exists():

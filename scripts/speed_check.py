@@ -10,13 +10,14 @@ Usage: python scripts/speed_check.py [process counts, default 1 2 4 8 12 16]
 import multiprocessing as mp
 import sys
 import time
+from multiprocessing.synchronize import Barrier, Event
 
 from kartzero.game import Button, Game
 
 FRAMES = 1800
 
 
-def worker(ready, go, results):
+def worker(ready: Barrier, go: Event, results: "mp.Queue[float]") -> None:
     with Game() as game:
         game.load_snapshot()
         game.hold(Button.A)
@@ -30,9 +31,9 @@ def worker(ready, go, results):
         results.put(FRAMES / (time.perf_counter() - start))
 
 
-def measure_parallel(count):
+def measure_parallel(count: int) -> list[float]:
     ready, go = mp.Barrier(count + 1), mp.Event()
-    results = mp.Queue()
+    results: "mp.Queue[float]" = mp.Queue()
     procs = [mp.Process(target=worker, args=(ready, go, results)) for _ in range(count)]
     for proc in procs:
         proc.start()
@@ -44,7 +45,7 @@ def measure_parallel(count):
     return rates
 
 
-def main():
+def main() -> None:
     with Game() as game:
         game.load_snapshot()
         game.hold(Button.A)

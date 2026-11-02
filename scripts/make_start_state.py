@@ -26,7 +26,7 @@ DRY_BONES = 8
 ROB_BLS = 34
 
 
-def main():
+def main() -> None:
     delete_emulator_save()
     with Game() as game:
         game.load_save()

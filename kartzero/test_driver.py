@@ -1,6 +1,6 @@
 """A simple driver for testing the game plumbing. The AI never uses or learns from it."""
 
-from kartzero.game import Button
+from kartzero.game import Button, Game
 
 CHECKPOINTS_AHEAD = 2
 
@@ -10,11 +10,11 @@ class TestDriver:
 
     __test__ = False  # stops pytest treating this as a test because of its name
 
-    def __init__(self, game):
+    def __init__(self, game: Game) -> None:
         self._game = game
         self._checkpoint_count = game.track.checkpoint_count()
 
-    def drive(self):
+    def drive(self) -> None:
         """Choose the buttons for right now and hold them."""
         target_x, target_z = self._game.track.checkpoint_center(
             (self._game.kart.checkpoint() + CHECKPOINTS_AHEAD) % self._checkpoint_count
