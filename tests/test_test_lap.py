@@ -112,3 +112,16 @@ def test_an_old_test_lap_file_gets_the_new_column_without_losing_its_laps(tmp_pa
     laps = store.test_laps()
     assert laps[old.name] == LapResult(True, 101.5, 1.0, None)
     assert laps[new.name] == LapResult(True, 99.0, 1.0, 4)
+
+
+def test_mini_turbos_counted_later_fill_in_laps_that_have_none(tmp_path):
+    store = VersionStore(tmp_path)
+    old = store.save({"weight": torch.tensor(1.0)}, 25_000, 1.0, 0.5)
+    new = store.save({"weight": torch.tensor(2.0)}, 50_000, 2.0, 0.6)
+    store.save_test_lap(old, LapResult(True, 101.5, 1.0))
+    store.save_test_lap(new, LapResult(True, 99.0, 1.0, 4))
+    store.save_mini_turbo_count(old, 13)
+    store.save_mini_turbo_count(new, 99)  # a lap the tester already counted keeps its own count
+    laps = store.test_laps()
+    assert laps[old.name].mini_turbos == 13
+    assert laps[new.name].mini_turbos == 4

@@ -8,7 +8,7 @@ versions by 100 million decisions.
 import csv
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +16,9 @@ SMALLEST_GAP = 25_000  # about a minute of training
 GROWTH_PER_VERSION = 1.03
 INDEX_FILE = "versions.csv"
 TEST_LAPS_FILE = "test_laps.csv"
+# Mini-turbos counted afterwards by scripts/lap_boosts.py, for laps tested before the lap tester
+# counted them. The test lap is the same every time, so the count matches the lap exactly.
+MINI_TURBO_COUNTS_FILE = "mini_turbo_counts.csv"
 FIELDS = ["file", "decisions", "minutes", "average_end_progress"]
 TEST_LAP_FIELDS = ["file", "finished", "seconds", "progress", "mini_turbos"]
 
@@ -68,6 +71,7 @@ class VersionStore:
         self._folder = run_folder / "versions"
         self._index = self._folder / INDEX_FILE
         self._test_laps = self._folder / TEST_LAPS_FILE
+        self._mini_turbo_counts = self._folder / MINI_TURBO_COUNTS_FILE
 
     def save_test_lap(self, version_file: Path, result: LapResult) -> None:
         self._upgrade_test_laps_file()
@@ -98,11 +102,11 @@ class VersionStore:
         os.replace(temporary, self._test_laps)
 
     def test_laps(self) -> dict[str, LapResult]:
-        """The test lap of each version that has one, by file name."""
+        """The test lap of each version that has one, by file name, with its mini-turbos if counted."""
         if not self._test_laps.exists():
             return {}
         with open(self._test_laps, newline="") as file:
-            return {
+            laps = {
                 row["file"]: LapResult(
                     row["finished"] == "True",
                     float(row["seconds"]),
@@ -111,6 +115,29 @@ class VersionStore:
                 )
                 for row in csv.DictReader(file)
             }
+        counted_later = self.mini_turbo_counts()
+        return {
+            name: replace(lap, mini_turbos=counted_later[name])
+            if lap.mini_turbos is None and name in counted_later
+            else lap
+            for name, lap in laps.items()
+        }
+
+    def save_mini_turbo_count(self, version_file: Path, mini_turbos: int) -> None:
+        """Record the mini-turbos of a version's test lap, counted after the lap tester ran it."""
+        is_new_file = not self._mini_turbo_counts.exists()
+        with open(self._mini_turbo_counts, "a", newline="") as file:
+            writer = csv.writer(file)
+            if is_new_file:
+                writer.writerow(["file", "mini_turbos"])
+            writer.writerow([version_file.name, mini_turbos])
+
+    def mini_turbo_counts(self) -> dict[str, int]:
+        """Mini-turbos counted afterwards, by file name."""
+        if not self._mini_turbo_counts.exists():
+            return {}
+        with open(self._mini_turbo_counts, newline="") as file:
+            return {row["file"]: int(row["mini_turbos"]) for row in csv.DictReader(file)}
 
     def save(self, network_state: dict[str, Any], decisions: int, minutes: float, end_progress: float) -> Path:
         """Save a version, and return its file."""
