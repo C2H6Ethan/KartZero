@@ -8,10 +8,9 @@ import numpy as np
 import torch
 
 from kartzero.environment import RaceEnvironment, Step
-from kartzero.holds import make_environment, sizes
 from kartzero.game import Game
-from kartzero.network import DriverNetwork
-from kartzero.settings import Settings
+from kartzero.holds import race_for
+from kartzero.network import load_driver
 from kartzero.sensors import TrackSensors
 from kartzero.versions import LapResult, VersionStore
 
@@ -34,22 +33,17 @@ def drive_test_lap(network: Any, environment: Environment) -> LapResult:
             return LapResult(step.finished, step.race_seconds, step.progress)
 
 
-def run_lap_tester(
-    versions_to_test: "Queue[Optional[Path]]", run_folder: Path, settings: Optional[Settings] = None
-) -> None:
+def run_lap_tester(versions_to_test: "Queue[Optional[Path]]", run_folder: Path) -> None:
     """Test every version that hasn't been tested yet, then wait for new ones. Runs in its own process."""
     torch.set_num_threads(1)
     store = VersionStore(run_folder)
-    settings = settings or Settings()
-    inputs, actions, _ = sizes(settings)
-    network = DriverNetwork(inputs, actions)
     with Game() as game:
         game.load_snapshot()
-        environment = make_environment(RaceEnvironment(game, TrackSensors(game.track.collision_triangles())), settings)
+        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
 
         def test(file: Path) -> None:
-            network.load_state_dict(torch.load(file, map_location="cpu")["network"])
-            result = drive_test_lap(network, environment)
+            network = load_driver(file)
+            result = drive_test_lap(network, race_for(network, race))
             store.save_test_lap(file, result)
             print(f"test lap {file.name}: {result.description()}", flush=True)
 

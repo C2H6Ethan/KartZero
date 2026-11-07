@@ -10,7 +10,13 @@ from kartzero.versions import LapResult, Version, VersionStore
 RUNS_FOLDER = Path(__file__).resolve().parent.parent / "runs"
 # Shown in their own column, or not about what is learned: emulators x decisions per chunk is what matters.
 NOT_LISTED = {"start_from", "emulators", "decisions_per_chunk"}
-SHORT_NAMES = {"sticky_chance": "sticky", "exploration_weight": "explore", "advantage_blend": "blend"}
+SHORT_NAMES = {
+    "sticky_chance": "sticky",
+    "exploration_weight": "explore",
+    "advantage_blend": "blend",
+    "hold_lengths": "holds",
+    "curiosity_weight": "curiosity",
+}
 
 
 class TrainingRun:
@@ -33,7 +39,7 @@ class TrainingRun:
         """The learning settings that differ from the defaults, like "explore 0.03, blend 0.95"."""
         settings = self.settings()
         changed = [
-            f"{SHORT_NAMES.get(name, name)} {settings[name]:g}" if isinstance(settings[name], float) else f"{name} {settings[name]}"
+            _describe(name, settings[name])
             for name, default in DEFAULTS.items()
             if name in settings and name not in NOT_LISTED and settings[name] != default
         ]
@@ -59,6 +65,14 @@ class TrainingRun:
         if not laps:
             return None
         return min(laps, key=lambda pair: (not pair[1].finished, pair[1].seconds, -pair[1].progress))
+
+
+def _describe(name: str, value: Any) -> str:
+    """One setting, short: "blend 0.95" for a number, just "holds" for a switch that's on."""
+    short = SHORT_NAMES.get(name, name)
+    if isinstance(value, bool):
+        return short
+    return f"{short} {value:g}" if isinstance(value, float) else f"{short} {value}"
 
 
 def all_runs(runs_folder: Path = RUNS_FOLDER) -> list[TrainingRun]:

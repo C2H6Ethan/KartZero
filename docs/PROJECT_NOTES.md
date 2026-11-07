@@ -1,12 +1,12 @@
 # KartZero project notes
 
-Where the project stands, and everything we've measured and decided. Last updated: 4 November 2026.
+Where the project stands, and everything we've measured and decided. Last updated: 7 November 2026.
 
 "Measured" means we ran it on this PC. Anything else is marked as a source or a guess.
 
 ## Where we are now
 
-**Stage: second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
+**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it drift and fire its first mini-turbo on a test lap. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
 
 **Official times come from test laps.** Each saved version gets one race with no exploration, always the likeliest button, in `runs/<run>/versions/test_laps.csv`. `watch.py --list` shows them. A separate process runs them, so training doesn't wait, and any untested versions get tested on the next `--resume`. Practice can mislead: the first AI reached 80% with dice rolls but just held reverse on top picks. The live viewer rolls the dice, so it shows practice, not test results.
 
@@ -42,60 +42,63 @@ The setup: three 2-hour runs started together, with sticky chances of 0, 0.25 an
 
 Averages are over the versions after the start (34 for the baseline, 39 or 40 for the others). `gae` is the only run whose practice reward rose, and its average test lap is about 0.9 seconds better than the baseline. Its best, 1:41.40 at 1.3 hours, beats the old run's 1:41.48, but only by 0.08 seconds. That's one run each with one seed, so the gap could partly be luck. More exploration made things worse, alone and with GAE. None of the four runs fired a single boost in practice, so the mini-turbo problem is unsolved.
 
-### Mini-turbo experiments (started 7 November)
+### Mini-turbo experiments (7 November)
 
-The goal: find a general change, with no reward for technique, that lets the AI discover mini-turbos. Each attempt is listed here with what it showed.
+The goal: find a general change, with no reward for any technique, that lets the AI discover mini-turbos. Every attempt is listed here in order, with what it showed. Three of them were removed from the code afterwards (per-button sticky dice, the Go-Explore archive, self-imitation). They're kept in git history at commit `1981d89` on the `mini-turbo-experiments` branch. The run folders and scratch scripts for the measurements below aren't in the repo.
 
-**1. How the game counts a mini-turbo (measured, frame by frame).** The hop lasts about 13 frames. The drift starts on landing, at count 1. A steer only counts if it comes at least 10 frames after the last counted one, which is 3 decisions. Steers 4 to 8 frames apart never got past count 2. Steers 10 to 32 frames apart all reached 4, and no upper limit showed up. Four counted steers (right, left, right, left in a left drift), then letting go of R, give a 55-frame boost. Letting go at count 2 gives nothing. A plain R press with no direction between steers doesn't break the count. The fields `driftLeftCount`, `driftRightCount` and `driftLeftRightTimeout` (set to 10 by each counted steer, then counting down) show this.
+**Summary so far.** The game makes mini-turbos an exploration trap: half a drift costs points, and the reward only comes after the whole 17-decision move. Every way of adding randomness (dice schemes, Go-Explore, letting the AI pick hold lengths) failed to find a single boost. **Curiosity worked:** the AI started drifting for real, fired boosts in practice, and its 43-minute brain fired the first mini-turbo ever on a test lap. Hold lengths make the AI learn to drive about 8 times faster, but on their own they don't find drifting.
 
-**2. What one mini-turbo is worth inside the AI's own race (measured).** I paused the `gae` run's 2-hour version's test race every 20 decisions and compared, over the next 120 decisions: keep driving, one scripted mini-turbo then keep driving, or the same drift with no boost.
+**1. How the game counts a mini-turbo (measured, frame by frame).**
+- **Starting a drift:** R must be pressed while a direction is held, at speed, with A held. Holding LEFT for only the first 4 frames was enough. A hop with no direction never becomes a drift, whatever the steering does afterwards, and that's what all our earlier AIs did. At speed 2 there was no drift, and without A there was none either.
+- **The hop and the count:** the hop lasts about 13 frames, and the drift starts on landing at count 1.
+- **Counting steers:** a steer only counts if it comes at least 10 frames (3 decisions) after the last counted one. Steers 4 to 8 frames apart never got past count 2. Steers 10 to 32 frames apart all reached 4, and no upper limit showed up. The count goes 1, 2, then straight to 4 on the fourth counted steer (right, left, right, left in a left drift), so it's never 3.
+- **Gaps are fine:** R held with no direction for 40 frames between steers didn't end the drift or the count.
+- **Firing the boost:** letting go of R at count 4 always gave a 55-frame boost, at delays of 0 to 32 frames and whatever else was held. Letting go at count 2 gave nothing.
+- The fields `driftLeftCount`, `driftRightCount` and `driftLeftRightTimeout` (set to 10 by each counted steer, then counting down) show all this.
+
+**2. What one mini-turbo is worth inside the AI's own race (measured).** I paused the `gae` run's 2-hour test race every 20 decisions and compared the next 120 decisions three ways: keep driving, one scripted mini-turbo then keep driving, or the same drift with no boost.
 - The better of the two mini-turbo directions gained **+2.3 points on average** (median +2.4, better at 53 of 69 points). That's about 0.1 seconds.
 - The wrong direction often lost 20 to 120 points.
 - A drift with no boost lost **15 points on average**, even in the better direction, and was better at only 4 of 69 points.
 
-So half a mini-turbo is punished, and the payoff only arrives after the whole move, about 17 decisions. The AI's habit of letting go of R straight away is the right lesson from what it has seen. This is an exploration trap, not a missing reward.
+So the AI's habit of avoiding drifts is the right lesson from what it had seen. Chains of 2 to 4 scripted mini-turbos lost 17 to 26 points, because the script steers blindly. So this doesn't measure the full prize: a mini-turbo only pays if the drift's steering follows the track. Our evidence of the full prize is still MarI/O Kart's 1:27.8 with 73 of them.
 
-**3. Chains of scripted mini-turbos (measured, every 60 decisions).** One gained +1.9 on average. Two in a row lost 16.8, three lost 19.4 and four lost 25.7, because the script steers blindly and wrecks the line. So this doesn't measure the full prize: a mini-turbo only pays if the drift's steering follows the track. Our evidence of the full prize is still MarI/O Kart's 1:27.8 with 73 of them.
+**3. Random play with different dice (measured, no boosts).** 30,000 decisions each, restarting every 60 seconds. A new random button every decision, sticky 0.5, sticky 0.8, εz-greedy (heavy-tailed holds, Dabney et al. 2020), and separate dice per half changing with chance 0.1, 0.2 or 0.3 all gave 0 boosts, and count 2 in at most 0.06% of decisions. Heavy-tailed holds drawn separately for the pedal and the steering reached count 4 in 0.03% of decisions, still with no boost. With the trained AI driving and one half overridden by such a hold with chance 2% per decision: count 4 in 0.065% of decisions, 0 boosts in 20,000, and races slowed to 135 s. Overridden picks also can't teach PPO anything, because the AI didn't make them.
 
-**4. How often random play fires a mini-turbo (measured).** 30,000 decisions (33 minutes of game time) each, restarting every 60 seconds, with 7 kinds of dice: a new random button every decision, sticky 0.5, sticky 0.8, εz-greedy (holds of heavy-tailed length, from Dabney et al. 2020), and separate dice per button changing with chance 0.1, 0.2 or 0.3. **All 7 gave 0 boosts.** Count 2 showed up in at most 0.06% of decisions and count 3 never. So rolling dice differently can't find this alone. Exploring needs to carry on from rare moments, not just press buttons differently.
+**4. Research.** I found no kart AI that learned mini-turbos without being rewarded for them. A Mario Kart Wii agent (Beyond The Rainbow, 2024) had drift buttons but a shaped reward. The general ideas tried here: temporally extended exploration (Dabney et al.), Go-Explore (Ecoffet et al.), self-imitation (Oh et al. 2018), FiGAR hold lengths (Sharma et al. 2017) and curiosity by Random Network Distillation (Burda et al. 2018).
 
-**5. Research (7 November).** I found no kart AI that learned mini-turbos without being rewarded for them. A Mario Kart Wii agent (Beyond The Rainbow, 2024) had drift buttons but a shaped reward. Useful general ideas: temporally extended exploration (Dabney et al.), Go-Explore's archive of rare states (Ecoffet et al.), and off-policy replay like Linesight's IQN.
+**5. Per-button sticky dice (removed).** The pedal and the steering rolled their own sticky dice at the same chance, 0.75. In a 77-minute run from scratch (`perbutton`, 1.0M decisions) there were no boosts, count 2 in at most 0.05% of practice, and best test lap 1:46.15.
 
-**6. Two new options, both general (built and tested, 7 November).**
-- `--sticky-per-button`: the 9 actions are 3 pedal choices (nothing, A, A + R) × 3 steering choices. With this on, the pedal and the steering roll their own sticky dice, with the same chance. When only one half of a pick was used, PPO updates only that half's odds. The earlier idea of separate dice for R and for direction was set aside because it hinted at drifting. This version treats both halves the same way, but it's still a judgement call.
-- `--archive-start-chance P` (`kartzero/archive.py`), in the style of Go-Explore: each emulator counts how often it sees each "cell" and saves game states for the rarest ones. A cell is the checkpoint plus the 11 kart inputs (speed, drift angle, turning, count, boost, off-road, ground and buttons), each rounded to a quarter of its range, the same rule for all. A practice race then starts from a saved state with chance P, picked with weight 1/√visits, and stops after 300 decisions. Saves are rationed to one per 500 decisions per emulator, because one takes 0.22 s (a load takes 0.12 s, and each is 2.7 MB). Those races don't count towards finishes or best times, and the states are deleted when training stops. The reward is unchanged.
-- The log now has `share_at_count_2` and `share_at_count_3`, only for watching.
+**6. Go-Explore archive (removed).** Each emulator saved game states of its rarest moments (by checkpoint and the 11 kart inputs, each rounded the same way), and half of practice races started from one. After returning, it pressed random buttons for 0 to 30 decisions. The first version forgot that random exploring step, which was my mistake. In 52 minutes (`archive`, 0.58M decisions, 279 archive races) there were no boosts and count 2 in about 0.01% of practice. The rare moments it kept were mostly unrelated (slow, off-road, odd turning). A pure Go-Explore loop with no learning ran 60,880 decisions over 8,823 cells and reached count 2 at best. Saving a state takes 0.22 s and loading one 0.12 s (2.7 MB each), only to files. The library's numbered save slots write backup states into the Python install folder, so don't use them.
 
-**7. First archive run: a design mistake (stopped at 23 minutes).** Two runs from scratch, 4 emulators each, GAE 0.95, sticky 0.75 per button, the same seed: `perbutton`, and `archive-noexplore` with archive chance 0.5. At 23 minutes both drove about 1:48 in test laps, and neither reached count 2 in recent practice, even after 128 archive races. The mistake: Go-Explore returns to a rare moment and then explores *randomly*, but mine handed control straight to the AI, which had already learned to let go of R. So it could never get past count 1. I stopped it. The folder is kept as `20261107-124558-archive-noexplore`.
+**7. Self-imitation (removed, never run).** It would re-learn from past decisions that beat the value guess. Our numbers suggested it would copy noise: a mini-turbo is worth about 2 to 5 points, while the guess is usually off by 5 to 8.
 
-**8. Archive with random exploring after the return (running).** After an archive start, the first 0 to 30 decisions (a random length) are random buttons. They're marked as ignored picks, so PPO doesn't push the odds with them, but the value guess learns from them. Each moment reached that way can be archived too, so the hope is count 1 → 2 → 3 → 4 a step at a time. Once the AI itself takes over at count 4, simply letting go of R fires a boost, which it can learn from directly, and then work backwards from there. Restarted as `archive` with `--archive-explore-decisions 30`, alongside the still-running `perbutton`.
+**8. Hold lengths (`--hold-lengths`, kept, `kartzero/holds.py`).** Each decision, the AI picks a pedal (nothing, A, A + R) and a steering (straight, LEFT, RIGHT), each with a hold length of 1, 2, 4, 8, 16 or 32 decisions. A half only picks again when its hold runs out, so "keep A + R held while the steering changes" is one choice the AI can make, and PPO learns from it. That's 324 actions and 2 more inputs (how long each hold has left). When only one half picked, PPO updates only that half's odds. Results from scratch on 8 emulators (`holds`):
+- best test lap 1:43.30 after 14 minutes, against about 2 hours for the old runs to reach 1:42 to 1:43
+- then a plateau: 1:43.22 at 55 minutes, while `gae` without hold lengths reached 1:41.40
+- count 2 almost never, and no boosts
 
-**Result of 7 and 8 (stopped at 77 and 52 minutes):** no boosts at all in either. `perbutton` reached 1.0M decisions, with count 2 in at most 0.05% of practice and best test lap 1:46.15. `archive` reached 0.58M decisions and 279 archive races, with count 2 in about 0.01% of practice and best test lap 1:46.98. Returning to rare moments didn't help, because the rare moments it kept were mostly unrelated (slow, off-road, odd turning), and random buttons from them still rarely held R long enough.
+So it speeds up learning but doesn't raise the ceiling or find drifting alone.
 
-**10. Pure Go-Explore, with no learning (measured).** It seeded the archive with the trained AI's own race, then kept returning to rare moments and pressing random buttons for 40 decisions, saving every new cell. Each save costs 0.22 s, so it ran only about 20 decisions per second. After 40 minutes (60,880 decisions, 8,823 cells) it had reached count 2, but never 4 and never a boost. The library can only save states to files. Its numbered slots are files too, and loading one writes backup states into the Python install folder, so don't use them.
+**9. Curiosity (`--curiosity-weight`, kept, `kartzero/curiosity.py`).** A fixed random network describes each set of inputs, and a second network learns to predict that description. Its error is high for moments it has rarely seen, and that error, centred on 0 within each chunk and capped, is added to the reward with a weight. Every input counts the same. Allowed as self-taught (see Decisions). From scratch with hold lengths, weight 0.3 (a guess), GAE 0.95 and 4 emulators (`curious-EXPERIMENT`):
+- **Practice:** count 2 or more in about 3% of practice decisions by 20 minutes, count 4 reached, about 21 boosts in the first 37 minutes.
+- **Test laps** (no exploration, no bonus, counted with `scripts/lap_boosts.py`): the AI really drifts.
 
-**11. Letting go at count 4 always works (measured).** At delays of 0 to 32 frames after reaching 4, and with nothing, A, A + LEFT, A + RIGHT or LEFT held when letting go, every try gave the 55-frame boost. The count also jumps straight from 2 to 4 on the last steer, so there's never a count of 3. That means the log's `share_at_count_3` really counts moments at 4.
+| Training time | Lap | Boosts | Highest count | Drifting |
+|---|---:|---:|---:|---:|
+| 14 min | 1:52.86 | 0 | 1 | 19% of decisions |
+| 29 min | 1:52.63 | 0 | 2 | 22% |
+| 43 min | 1:58.60 | **1** | 4 | 37% |
 
-**12. Heavy-tailed holds per half (measured).** Random play where the pedal and the steering each draw a hold length from the same heavy-tailed distribution reached count 4 for the first time (0.03% of decisions, with μ = 1.6), but no boosts in 30,000 decisions. With the trained AI driving, overriding one half with chance 2% per decision reached count 4 in 0.065% of decisions, still with 0 boosts in 20,000, and races slowed to 135 s on average. The bigger problem is that overridden picks can't teach PPO anything, because the AI didn't make them.
+- Driving is slower while the bonus is on: best test lap 1:45.96, against 1:43.22 for `holds` alone.
 
-**13. The AI picks its own hold lengths (`--hold-lengths`, running).** From FiGAR (Sharma et al. 2017). Each decision, the AI picks a pedal and a steering, each with a hold length from 1, 2, 4, 8, 16 or 32 decisions. A half only takes a new pick when its hold has run out. That's 18 × 18 = 324 actions, and 2 extra inputs say how long each hold has left (`kartzero/holds.py`). A long A + R hold over several short steering holds is then the AI's own choice, so PPO can learn from it. Both halves get the same lengths, and the reward is unchanged. Untrained random picks reached count 1 in about 1% of decisions but never count 2 in 60,000, though random driving is slow and constantly in walls. Started from scratch on 8 emulators with GAE 0.95, as `holds`.
-
-**14. What starts a drift (measured).** A drift only starts if a direction is held at the moment R is pressed, at speed, with A held. Pressing LEFT only for the first 4 frames of the hop was enough.
-- A hop with no direction never becomes a drift, even with steering afterwards. That's what the trained AIs do.
-- At speed 2 there was no drift, and without A there was none either.
-- Once drifting, 40 frames of R with no steering didn't end it, and the counting steers still worked afterwards.
-
-**15. Hold lengths learn to drive much faster (measured, `holds` at 15 minutes).** Best test lap 1:43.30 after 14 minutes and 0.35M decisions, against 1:46 for `perbutton` after 77 minutes, and about 2 hours for the old runs to reach 1:42 to 1:43. Practice reward was 1.03 by 15 minutes. Its share of picks where neither half decided fell from 0.82 to 0.57 as it learned shorter holds. But count 2 never happened in any round, and there were no boosts.
-
-**16. Curiosity (`--curiosity-weight`, running).** Random Network Distillation (Burda et al. 2018): a fixed random network describes each set of inputs, and a second network learns to predict that description. Its error is high for moments it hasn't seen much, and that error, centred on 0 within each chunk and capped, is added to the reward with a weight. Every input counts the same, so it knows nothing about drifting. It's a reward that isn't progress or time, so I asked whether it counts as self-taught. Decided 7 November: yes, it does (see Decisions). Running from scratch as `curious-EXPERIMENT`: hold lengths, weight 0.3 (a guess), GAE 0.95, 4 emulators.
-
-**9. Self-imitation (`--self-imitation-weight`, built, not yet run).** From Oh et al. 2018. It keeps the last 200,000 decisions with the real points that followed. Each round, it takes 4 samples of 512 and pushes the odds towards the action really held, wherever the points beat the guess. A worry, from our own numbers: a mini-turbo is worth about 2 to 5 points, while the guess is usually off by about 5 to 8 (guess error 0.002 to 0.007 in hundreds of points), so it may copy noise as much as mini-turbos.
+**Running now:** `curious-EXPERIMENT` (until about 16:20) and `curious-noholds` (curiosity without hold lengths, until about 17:00, to find out whether hold lengths are needed for this).
 
 Next steps, in order:
-1. Train `gae` (advantage blend 0.95, exploration 0.01) for longer on all 8 emulators, from the `gae` run's newest version, and check whether boosts appear and test laps keep improving. Not started.
-2. If that stalls too, measure a replay-based method such as IQN.
-3. Make test laps count boosts as well as time. Wait until the comparison ends, because its lap testers are writing the current file format.
-4. If stickiness is ever used again and mini-turbos appear, turn it down in steps such as 0.5 → 0.25 → 0, checking test laps and boosts after each step. That's a guess, not tested.
+1. When `curious-EXPERIMENT` ends, carry on from its newest brain with curiosity turned down or off, and count test-lap boosts after each step. Does it keep mini-turbos for speed alone? The prediction: it keeps them where they reliably work (straights) and drops them where they mostly fail.
+2. Compare `curious-noholds` with `curious-EXPERIMENT`. If curiosity drifts just as well without hold lengths, remove hold lengths and go back to the simpler 9 actions.
+3. Try a few curiosity weights, since 0.3 was a guess.
+4. If mini-turbos stay but stall, measure a replay-based method such as IQN.
 
 ## Goal and targets
 
@@ -157,9 +160,10 @@ python scripts/speed_check.py
 | `Game` in `kartzero/game.py` | Running the game | `game.start_race()`, `game.hold(Button.A)`, `game.advance(4)`, `game.open_window()` |
 | `Kart` in `kartzero/kart.py`, as `game.kart` | Kart and race data | `speed()`, `position()`, `heading()`, `drift_angle()`, `turning_rate()`, `mini_turbo_count()`, `boost_time_left()`, `is_off_road()`, `is_on_ground()`, `race_progress()`, `has_finished()`, `lap()`, `checkpoint()`, `race_clock()`, `finish_time()` |
 | `Track` in `kartzero/track.py`, as `game.track` | The track layout | `checkpoint_count()`, `checkpoint_center(index)`, `collision_triangles()` |
-| `RaceEnvironment` in `kartzero/environment.py` | One race, one decision at a time, and the 9 actions. With a sticky chance, practice sometimes repeats the last button, and the step says so (`pick_ignored`). It also reports new boosts (`boost_started`). With `per_button`, the pedal and steering roll separate sticky dice. With an archive, some races start from a saved rare moment (`from_archive`) | `reset()`, `step(action)` |
-| `StateArchive` in `kartzero/archive.py` | Counting how often each coarse kart state is seen, and keeping saved game states of the rarest, Go-Explore style | `visit(cell)`, `file_for(cell, action)`, `pick()` |
-| `DriverNetwork` in `kartzero/network.py` | Button odds and the guess of future points | `network(observations)` |
+| `RaceEnvironment` in `kartzero/environment.py` | One race, one decision at a time, and the 9 actions (3 pedals × 3 steerings). With a sticky chance, practice sometimes repeats the last button, and the step says which halves of the pick were ignored. It also reports new boosts (`boost_started`) | `reset()`, `step(action)` |
+| `HoldEnvironment` in `kartzero/holds.py` | A race where the AI also picks how long to hold the pedal and the steering. `race_for(driver, race)` picks the right race for a saved brain | `reset()`, `step(action)`, `split(action)` |
+| `Curiosity` in `kartzero/curiosity.py` | The bonus for reaching rarely seen moments | `bonus(observations, weight)`, `learn(observations)` |
+| `DriverNetwork` in `kartzero/network.py` | Button odds and the guess of future points. `load_driver(file)` loads a saved brain of either shape | `network(observations)` |
 | `Trainer` in `kartzero/learner.py` | Driving the emulators, then learning from each chunk | `run_training(settings, minutes, viewer)` |
 | `run_lap_tester` in `kartzero/test_lap.py` | Driving an official test lap for each saved version, in its own process | `drive_test_lap(network, environment)` |
 | `run_viewer` in `kartzero/viewer.py` | Showing the AI live in a resizable window, rolling the dice like training. It finishes each race before loading the newest AI, so it never switches mid-race | `run_viewer()` |
@@ -176,8 +180,9 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 | `scripts/speed_check.py` | Drives with the accelerator held and measures speed with 1 or more emulators |
 | `scripts/replay_check.py` | Checks that the same buttons give the same result |
 | `scripts/progress_check.py` | Checks race progress by driving forward, reversing and completing laps with a test driver |
-| `scripts/train.py` | Trains on 8 emulators with a live window. Closing the window stops training and saves. Results go in `runs/`, and the newest AI in `checkpoints/latest.pt`. Add `--resume` to carry on the same run from that save. `--sticky-chance`, `--sticky-per-button`, `--archive-start-chance`, `--start-from <version>`, `--checkpoint`, `--name` and `--decisions-per-chunk` let several runs go side by side |
+| `scripts/train.py` | Trains on 8 emulators with a live window. Closing the window stops training and saves. Results go in `runs/`, and the newest AI in `checkpoints/latest.pt`. Add `--resume` to carry on the same run from that save. `--sticky-chance`, `--hold-lengths`, `--curiosity-weight`, `--start-from <version>`, `--checkpoint`, `--name` and `--decisions-per-chunk` let several runs go side by side |
 | `scripts/watch.py` | Shows the newest saved AI racing in the window, with no training. `--list` sums up every run: sticky chance, where it started, time trained, best and newest test lap. `--list <run>` shows each version of one run, marking the start and the best. `--run <run>` plays a run's newest version, and `--hours 30` plays the one nearest 30 hours (add `--run` to pick the run). A run can be named by the end of its folder name, like `213453` or `sticky0.25`. A run's first version is its starting brain, so it never counts as the best. `--compare` takes turns between the `checkpoints/compare-sticky*.pt` runs, one race each with each run's newest AI and sticky chance, and labels which one it is |
+| `scripts/lap_boosts.py` | Drives a run's saved versions on test laps and counts boosts, the highest mini-turbo count and how much of the race it drifts. `--every N` tests every Nth version |
 | `scripts/retime_test_laps.py` | Re-drives every version of a run to record test laps in official game time. Only for runs that have stopped training |
 | `scripts/observation_check.py` | Builds the AI's inputs through a real race, and shows the range of each one |
 | `scripts/sensor_check.py` | Checks the kart readings and sensors on the real game, and draws a map to check by eye |

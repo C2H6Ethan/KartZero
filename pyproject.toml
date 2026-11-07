@@ -27,7 +27,7 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [[tool.mypy.overrides]]
-module = ["test_kart", "test_observation", "test_reward", "test_sensors", "test_track", "test_training", "test_learner", "test_environment", "test_versions", "test_test_lap", "test_runs", "test_archive", "test_self_imitation", "test_holds", "test_curiosity"]
+module = ["test_kart", "test_observation", "test_reward", "test_sensors", "test_track", "test_training", "test_learner", "test_environment", "test_versions", "test_test_lap", "test_runs", "test_holds", "test_curiosity"]
 disallow_untyped_defs = false
 check_untyped_defs = false
 

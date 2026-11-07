@@ -7,9 +7,9 @@ from kartzero.environment import (
     ACTIONS,
     MAX_DECISIONS_PER_RACE,
     OBSERVATION_SIZE,
+    PEDALS,
+    STEERINGS,
     RaceEnvironment,
-    pedal_of,
-    steering_of,
 )
 from kartzero.game import Button
 
@@ -95,17 +95,13 @@ class FakeGame:
     def hold(self, buttons):
         self.held.append(buttons)
 
-    def load_snapshot(self, file):
-        self.kart.snapshot_loaded = True
-        self.loaded = file
-
     def advance(self, frames):
         self.kart.progress += self.progress_per_decision
 
 
-def make_environment(progress_per_decision=0.0, sticky_chance=0.0, seed=0, per_button=False):
+def make_environment(progress_per_decision=0.0, sticky_chance=0.0, seed=0):
     game = FakeGame(progress_per_decision)
-    return game, RaceEnvironment(game, FakeSensors(), sticky_chance, seed, per_button)
+    return game, RaceEnvironment(game, FakeSensors(), sticky_chance, seed)
 
 
 def test_the_first_numbers_come_from_after_the_snapshot_loads():
@@ -237,86 +233,16 @@ def test_a_new_race_starts_clean():
     assert step.decisions == 1 and not step.finished
 
 
-def test_every_action_is_one_pedal_and_one_steering_choice():
-    pedals = (Button.NONE, Button.A, Button.A | Button.R)
-    steering = (Button.NONE, Button.LEFT, Button.RIGHT)
-    for action, buttons in enumerate(ACTIONS):
-        assert buttons == pedals[pedal_of(action)] | steering[steering_of(action)]
+def test_every_action_is_one_pedal_and_one_steering():
+    assert len(ACTIONS) == len(PEDALS) * len(STEERINGS)
+    for pedal_index, pedal in enumerate(PEDALS):
+        for steering_index, steering in enumerate(STEERINGS):
+            assert ACTIONS[pedal_index * len(STEERINGS) + steering_index] == pedal | steering
 
 
-def test_per_button_dice_can_keep_the_pedal_and_take_the_new_steering():
-    game, environment = make_environment(sticky_chance=0.5, seed=3, per_button=True)
-    environment.reset()
-    environment.step(7)  # A + R + LEFT, so a kept pedal is A + R
-    seen = set()
-    for _ in range(200):
-        pick = 5  # A + RIGHT
-        step = environment.step(pick)
-        held = ACTIONS.index(game.held[-1])
-        assert (pedal_of(held) == pedal_of(pick)) or step.pedal_ignored
-        assert (steering_of(held) == steering_of(pick)) or step.steering_ignored
-        assert step.pick_ignored == (step.pedal_ignored and step.steering_ignored)
-        seen.add((step.pedal_ignored, step.steering_ignored))
-    assert seen == {(False, False), (False, True), (True, False), (True, True)}
-
-
-def test_joint_dice_repeat_both_halves_together():
+def test_a_sticky_repeat_ignores_both_halves_of_the_pick():
     _, environment = make_environment(sticky_chance=0.5, seed=3)
     environment.reset()
     for i in range(200):
         step = environment.step(i % len(ACTIONS))
         assert step.pedal_ignored == step.steering_ignored == step.pick_ignored
-
-
-def test_a_step_reports_the_action_really_held():
-    game, environment = make_environment(sticky_chance=0.5, seed=3, per_button=True)
-    environment.reset()
-    for i in range(50):
-        step = environment.step(i % len(ACTIONS))
-        assert ACTIONS[step.held_action] == game.held[-1]
-
-
-class FakeArchive:
-    def __init__(self):
-        self.visits = 0
-
-    def pick(self):
-        return ("rare.dst", 7)
-
-    def visit(self, cell):
-        self.visits += 1
-        return False
-
-
-def test_an_archive_start_loads_the_moment_and_holds_what_was_held():
-    game = FakeGame()
-    environment = RaceEnvironment(game, FakeSensors(), archive=FakeArchive(), archive_start_chance=1.0)
-    observation = environment.reset()
-    assert game.loaded == "rare.dst"
-    assert game.held[-1] == ACTIONS[7]
-    assert observation[7] == 1.0  # A is shown as held
-    assert environment.step(3).from_archive
-
-
-def test_archive_races_stop_at_their_own_limit():
-    environment = RaceEnvironment(
-        FakeGame(), FakeSensors(), archive=FakeArchive(), archive_start_chance=1.0, archive_race_decisions=5
-    )
-    environment.reset()
-    assert [environment.step(3).out_of_time for _ in range(5)] == [False] * 4 + [True]
-
-
-def test_exploring_after_an_archive_start_ignores_the_ais_picks():
-    environment = RaceEnvironment(
-        FakeGame(), FakeSensors(), seed=2, archive=FakeArchive(), archive_start_chance=1.0, archive_explore_decisions=30
-    )
-    explored = []
-    for _ in range(20):
-        environment.reset()
-        steps = [environment.step(3) for _ in range(40)]
-        ignored = [step.pick_ignored for step in steps]
-        length = ignored.index(False) if False in ignored else 40
-        assert not any(ignored[length:])  # no stickiness, so the AI's own picks are used after exploring
-        assert all(steps[i].held_action in range(len(ACTIONS)) for i in range(length))
-        explored.append(length)
-    assert min(explored) < 10 and max(explored) > 20

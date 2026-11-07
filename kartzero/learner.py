@@ -15,18 +15,12 @@ from typing import Any, Optional
 import numpy as np
 import torch
 
-from kartzero.environment import (
-    ACTIONS,
-    DECISIONS_PER_SECOND,
-    STEERING_CHOICES,
-    Step,
-)
-from kartzero.curiosity import Curiosity
+from kartzero.curiosity import Curiosity, faded_weight
+from kartzero.environment import DECISIONS_PER_SECOND, STEERINGS, Step
 from kartzero.game import ROOT
-from kartzero.holds import sizes
+from kartzero.holds import layout_for
 from kartzero.network import VALUE_SCALE, DriverNetwork
 from kartzero.observation import MINI_TURBO_SCALE
-from kartzero.self_imitation import ExperienceBuffer, self_imitation_loss
 from kartzero.settings import Settings
 from kartzero.test_lap import run_lap_tester
 from kartzero.training import blended_advantages, future_points, guess_error, limited_scores
@@ -39,14 +33,15 @@ EPSILON = 1e-8
 SAVE_EVERY_ROUNDS = 5
 PRINT_EVERY_ROUNDS = 5
 LAP_TESTER_STOP_SECONDS = 30
-MINI_TURBO_INPUT = 3  # where the mini-turbo count sits in the observation
+MINI_TURBO_INPUT = 3  # where the mini-turbo count sits in the observation, for the log
 
 
 def policy_score(ratios: torch.Tensor, advantages: torch.Tensor, used: torch.Tensor) -> torch.Tensor:
     """The average PPO score over the decisions in `used`, with advantages compared within them.
 
-    Decisions the sticky dice overrode are left out: the outcome would have been the same whatever
-    was picked, so on average they push no button, and leaving them out removes their noise.
+    Decisions where the pick decided nothing (the sticky dice repeated the last button, or a hold
+    hadn't run out) are left out: the outcome would have been the same whatever was picked, so on
+    average they push no button, and leaving them out removes their noise.
     """
     if int(used.sum()) < 2:  # too few to compare advantages
         return (ratios * 0).sum()
@@ -60,17 +55,18 @@ def used_log_odds(
     actions: torch.Tensor,
     pedal_used: torch.Tensor,
     steering_used: torch.Tensor,
-    steering_choices: int = STEERING_CHOICES,
+    steering_half: int = len(STEERINGS),
 ) -> torch.Tensor:
     """The log odds of the part of each pick that was really used.
 
-    Both halves used: the whole action. Only one: that half's odds, adding up over the other half.
-    Neither: the whole action, though such picks are left out of the update anyway.
+    An action is pedal half * steering_half + steering half. Both halves used: the whole action's
+    odds. Only one: that half's odds, which add up the odds over every choice of the other half.
+    Neither: the whole action's, though such picks are left out of the update anyway.
     """
     whole = odds.log_prob(actions)
-    split = odds.logits.view(len(actions), -1, steering_choices)  # Categorical keeps these normalised
-    pedal = torch.logsumexp(split, dim=2).gather(1, (actions // steering_choices)[:, None]).squeeze(1)
-    steering = torch.logsumexp(split, dim=1).gather(1, (actions % steering_choices)[:, None]).squeeze(1)
+    table = odds.logits.view(len(actions), -1, steering_half)  # [decision, pedal half, steering half]
+    pedal = torch.logsumexp(table, dim=2).gather(1, (actions // steering_half)[:, None]).squeeze(1)
+    steering = torch.logsumexp(table, dim=1).gather(1, (actions % steering_half)[:, None]).squeeze(1)
     only_pedal = pedal_used & ~steering_used
     only_steering = steering_used & ~pedal_used
     return torch.where(only_pedal, pedal, torch.where(only_steering, steering, whole))
@@ -124,9 +120,7 @@ class Recording:
         self.rewards: list[float] = []
         self.race_ends: list[bool] = []
         self.points_after: list[float] = []
-        self.picks_ignored: list[bool] = []
-        self.held_actions: list[int] = []
-        self.pedals_used: list[bool] = []
+        self.pedals_used: list[bool] = []  # whether each half of the pick really chose what was held
         self.steerings_used: list[bool] = []
         self.boosts = 0
 
@@ -145,11 +139,11 @@ class Trainer:
         torch.set_num_threads(1)
         self._settings = settings
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._inputs, self._actions, self._half_choices = sizes(settings)
-        self._driver = DriverNetwork(self._inputs, self._actions)
+        self._layout = layout_for(settings)
+        self._driver = DriverNetwork(self._layout.inputs, self._layout.actions)
         if settings.start_from and not saved:
             self._driver.load_state_dict(torch.load(settings.start_from, map_location="cpu")["network"])
-        self._learner = DriverNetwork(self._inputs, self._actions).to(self._device)
+        self._learner = DriverNetwork(self._layout.inputs, self._layout.actions).to(self._device)
         self._optimizer = torch.optim.Adam(self._learner.parameters(), lr=settings.learning_rate)
         self._run_folder = run_folder
         self._checkpoint = checkpoint
@@ -168,9 +162,11 @@ class Trainer:
             self.earlier_seconds = saved["seconds"]
         self._learner.load_state_dict(self._driver.state_dict())
         self._race_end_progress: list[float] = []
-        self._archive_races = 0
-        self._curiosity = Curiosity(self._inputs, self._device, settings.seed) if settings.curiosity_weight else None
-        self._experience = ExperienceBuffer(settings.self_imitation_buffer, self._inputs, settings.seed)
+        self._curiosity = None
+        if settings.curiosity_weight:
+            self._curiosity = Curiosity(self._layout.inputs, self._device, settings.seed)
+            if saved and "curiosity" in saved:  # carry on with what it already finds familiar
+                self._curiosity.load_state(saved["curiosity"])
         self._last_end_progress = float("nan")  # no race has ended yet
 
         run_folder.mkdir(parents=True, exist_ok=True)
@@ -184,11 +180,7 @@ class Trainer:
             ours, theirs = mp.Pipe()
             # A different sticky seed per emulator, so they don't all repeat at the same moments.
             seed = settings.seed * 1000 + index
-            worker = mp.get_context("spawn").Process(
-                target=run_worker,
-                args=(theirs, settings, seed, run_folder / "archive" / f"emulator{index}"),
-                daemon=True,
-            )
+            worker = mp.get_context("spawn").Process(target=run_worker, args=(theirs, settings, seed), daemon=True)
             worker.start()
             self._connections.append(ours)
             self._workers.append(worker)
@@ -209,18 +201,18 @@ class Trainer:
         """Save everything needed to carry on, replacing the last save."""
         self._checkpoint.parent.mkdir(exist_ok=True)
         temporary = self._checkpoint.with_suffix(".tmp")
-        torch.save(
-            {
-                "network": self._driver.state_dict(),
-                "optimizer": self._optimizer.state_dict(),
-                "decisions": self._total_decisions,
-                "finishes": self._finishes,
-                "best_seconds": self._best_seconds,
-                "seconds": seconds,
-                "run_folder": self._run_folder.name,
-            },
-            temporary,
-        )
+        saved: dict[str, Any] = {
+            "network": self._driver.state_dict(),
+            "optimizer": self._optimizer.state_dict(),
+            "decisions": self._total_decisions,
+            "finishes": self._finishes,
+            "best_seconds": self._best_seconds,
+            "seconds": seconds,
+            "run_folder": self._run_folder.name,
+        }
+        if self._curiosity is not None:
+            saved["curiosity"] = self._curiosity.state()
+        torch.save(saved, temporary)
         os.replace(temporary, self._checkpoint)  # so the viewer never loads a half-written file
 
     def save_version(self, seconds: float) -> Path:
@@ -245,7 +237,7 @@ class Trainer:
                 results: list[tuple[Step, np.ndarray]] = [connection.recv() for connection in self._connections]
                 pedals_used = torch.as_tensor([not step.pedal_ignored for step, _ in results])
                 steerings_used = torch.as_tensor([not step.steering_ignored for step, _ in results])
-                log_odds = used_log_odds(odds, actions, pedals_used, steerings_used, self._half_choices)
+                log_odds = used_log_odds(odds, actions, pedals_used, steerings_used, self._layout.steering_half)
 
                 for index, (step, _) in enumerate(results):
                     recording = recordings[index]
@@ -256,8 +248,6 @@ class Trainer:
                     recording.rewards.append(step.reward)
                     recording.race_ends.append(step.finished or step.out_of_time)
                     recording.points_after.append(self._points_after(step, is_last_decision))
-                    recording.picks_ignored.append(step.pick_ignored)
-                    recording.held_actions.append(step.held_action)
                     recording.pedals_used.append(not step.pedal_ignored)
                     recording.steerings_used.append(not step.steering_ignored)
                     recording.boosts += step.boost_started
@@ -274,9 +264,6 @@ class Trainer:
         return float(guess)
 
     def _note_race_end(self, step: Step) -> None:
-        if step.from_archive:  # it didn't start at the start line, so its time and progress mean nothing
-            self._archive_races += step.finished or step.out_of_time
-            return
         if step.finished or step.out_of_time:
             self._race_end_progress.append(step.progress)
         if step.finished:
@@ -289,10 +276,10 @@ class Trainer:
         gamma = self._settings.gamma
         points: list[float] = []
         how_it_went: list[float] = []
-        bonuses = self._curiosity_bonuses(recordings)
+        bonuses, curiosity_log = self._curiosity_bonuses(recordings)
         for recording, bonus in zip(recordings, bonuses):
             chunk = chunk_advantages(
-                [reward + extra for reward, extra in zip(recording.rewards, bonus)],
+                list(np.array(recording.rewards) + bonus),  # the bonus is all zeros when curiosity is off
                 recording.guesses,
                 recording.race_ends,
                 recording.points_after,
@@ -308,9 +295,9 @@ class Trainer:
         old_log_odds = self._tensor([o for r in recordings for o in r.old_log_odds])
         points_tensor = self._tensor(points)
         advantage_tensor = self._tensor(how_it_went)
-        picks_used = ~torch.as_tensor([i for r in recordings for i in r.picks_ignored], device=self._device)
         pedals_used = torch.as_tensor([u for r in recordings for u in r.pedals_used], device=self._device)
         steerings_used = torch.as_tensor([u for r in recordings for u in r.steerings_used], device=self._device)
+        picks_used = pedals_used | steerings_used
 
         last_guess_error, last_ratio_gap = 0.0, 0.0
         batch_size = self._settings.batch_size
@@ -320,7 +307,7 @@ class Trainer:
                 batch = order[start : start + batch_size]
                 odds, guesses = self._learner(observations[batch])
                 new_log_odds = used_log_odds(
-                    odds, actions[batch], pedals_used[batch], steerings_used[batch], self._half_choices
+                    odds, actions[batch], pedals_used[batch], steerings_used[batch], self._layout.steering_half
                 )
                 ratios = (new_log_odds - old_log_odds[batch]).exp()
                 # Comparing advantages within a batch keeps the size of the push steady.
@@ -340,7 +327,6 @@ class Trainer:
                 last_guess_error = error.item()
                 last_ratio_gap = (ratios - 1).abs().mean().item()
 
-        imitated = self._self_imitate(recordings) if self._settings.self_imitation_weight > 0 else 0.0
         self._driver.load_state_dict({key: value.cpu() for key, value in self._learner.state_dict().items()})
         ended = self._race_end_progress
         self._race_end_progress = []
@@ -352,74 +338,62 @@ class Trainer:
             # Includes any boost from a start-line rocket start.
             "boosts_per_minute": sum(r.boosts for r in recordings) / practice_minutes,
             "picks_ignored": 1 - float(picks_used.float().mean()),
-            # For watching only, never for the reward: how close practice gets to a mini-turbo.
-            "share_at_count_2": float((observations[:, MINI_TURBO_INPUT] >= 2 / MINI_TURBO_SCALE).float().mean()),
-            "share_at_count_3": float((observations[:, MINI_TURBO_INPUT] >= 3 / MINI_TURBO_SCALE).float().mean()),
+            # For watching only, never for the reward: how close practice gets to a mini-turbo. The
+            # count goes 1, 2, then straight to 4, where letting go of R fires the boost.
+            "share_at_count_2": _share_at_count(observations, 2),
+            "share_at_count_4": _share_at_count(observations, 4),
             "average_reward": float(np.mean([reward for r in recordings for reward in r.rewards])),
             "races_ended": float(len(ended)),
-            "archive_races": float(self._archive_races),
             "average_end_progress": float(np.mean(ended)) if ended else float("nan"),
             "finishes": float(self._finishes),
             "best_seconds": self._best_seconds if self._best_seconds is not None else float("nan"),
             "guess_error": last_guess_error,
-            "share_imitated": imitated,
-            "curiosity_spread": float(np.mean([np.abs(b).mean() for b in bonuses])),
             "ratio_gap": last_ratio_gap,
-        }
+        } | curiosity_log
 
-    def _curiosity_bonuses(self, recordings: list[Recording]) -> list[np.ndarray]:
-        """Each decision's bonus for the newness of the moment it led to. All zeros when curiosity is off.
+    def _curiosity_bonuses(self, recordings: list[Recording]) -> tuple[list[np.ndarray], dict[str, float]]:
+        """Each decision's bonus for how new the moment it led to is, and numbers for the log.
 
-        A decision that ended a race gets none, because the moment after it is the next race's start.
+        All zeros when curiosity is off. A decision that ended a race gets none, because the moment
+        after it is the next race's start.
         """
         if self._curiosity is None:
-            return [np.zeros(len(r.rewards)) for r in recordings]
-        following = [
-            np.concatenate([np.array(r.observations[1:]), self._observations[index][None]])
-            for index, r in enumerate(recordings)
-        ]
-        all_following = self._tensor(np.concatenate(following))
-        bonus = self._curiosity.bonus(all_following, self._settings.curiosity_weight).cpu().numpy()
-        self._curiosity.learn(self._tensor(np.concatenate([np.array(r.observations) for r in recordings])))
-        result: list[np.ndarray] = []
-        start = 0
-        for recording in recordings:
-            part = bonus[start : start + len(recording.rewards)].copy()
-            part[np.array(recording.race_ends)] = 0.0
-            result.append(part)
-            start += len(recording.rewards)
-        return result
-
-    def _self_imitate(self, recordings: list[Recording]) -> float:
-        """Store this chunk with its real points, then learn from past decisions that beat the guess.
-
-        Returns the share of sampled decisions that beat the guess.
-        """
-        for recording in recordings:
-            real_points = chunk_points(
-                recording.rewards, recording.race_ends, recording.points_after, self._settings.gamma
-            )
-            self._experience.add(np.array(recording.observations), recording.held_actions, real_points)
-        size = self._settings.batch_size
-        better_total = 0
-        for _ in range(self._settings.self_imitation_batches):
-            observations, actions, points = self._experience.sample(size)
-            loss, better = self_imitation_loss(
-                self._learner,
-                self._tensor(observations),
-                torch.as_tensor(actions, device=self._device),
-                self._tensor(points),
-            )
-            better_total += better
-            if better:
-                self._optimizer.zero_grad()
-                (self._settings.self_imitation_weight * loss).backward()
-                torch.nn.utils.clip_grad_norm_(self._learner.parameters(), MAX_GRADIENT)
-                self._optimizer.step()
-        return better_total / (size * self._settings.self_imitation_batches)
+            return [np.zeros(len(recording.rewards)) for recording in recordings], {}
+        # The moment after each decision is the next one in its recording, or, after the last
+        # decision, the moment that emulator is waiting at now.
+        next_moments = np.concatenate(
+            [
+                np.array(recording.observations[1:] + [self._observations[index]])
+                for index, recording in enumerate(recordings)
+            ]
+        )
+        moments = self._tensor(next_moments)
+        novelty = self._curiosity.novelty(moments)
+        weight = faded_weight(
+            self._settings.curiosity_weight, self._settings.curiosity_fade_decisions, self._total_decisions
+        )
+        bonus = self._curiosity.bonus(novelty, weight).cpu().numpy()
+        self._curiosity.learn(moments)
+        bonuses = np.split(bonus, np.cumsum([len(recording.rewards) for recording in recordings])[:-1])
+        for recording, recording_bonus in zip(recordings, bonuses):
+            recording_bonus[np.array(recording.race_ends)] = 0.0
+        # How new drift moments (count 2 or more) look next to the average moment. Near 1 means
+        # drifting has become familiar, so the bonus is no longer what keeps the AI drifting.
+        drifting = moments[:, MINI_TURBO_INPUT] >= 2 / MINI_TURBO_SCALE
+        drift_newness = float(novelty[drifting].mean() / novelty.mean()) if drifting.any() else float("nan")
+        return bonuses, {
+            "curiosity_weight": weight,
+            "curiosity_spread": float(np.mean(np.abs(bonus))),
+            "drift_newness": drift_newness,
+        }
 
     def _tensor(self, values: object) -> torch.Tensor:
         return torch.as_tensor(np.array(values), dtype=torch.float32, device=self._device)
+
+
+def _share_at_count(observations: torch.Tensor, count: int) -> float:
+    """The share of decisions at this mini-turbo count or higher."""
+    return float((observations[:, MINI_TURBO_INPUT] >= count / MINI_TURBO_SCALE).float().mean())
 
 
 def _code_version() -> str:
@@ -462,7 +436,7 @@ def run_training(
     next_version = next_version_after(trainer.total_decisions)
     context = mp.get_context("spawn")
     versions_to_test: "mp.Queue[Optional[Path]]" = context.Queue()
-    lap_tester = context.Process(target=run_lap_tester, args=(versions_to_test, run_folder, settings), daemon=True)
+    lap_tester = context.Process(target=run_lap_tester, args=(versions_to_test, run_folder), daemon=True)
     lap_tester.start()
     start = time.perf_counter()
     round_number = 0

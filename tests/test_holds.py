@@ -4,7 +4,16 @@ from test_environment import FakeGame, FakeSensors
 
 from kartzero.environment import ACTIONS, RaceEnvironment
 from kartzero.game import Button
-from kartzero.holds import HALF_CHOICES, HOLD_ACTIONS, HOLD_LENGTHS, HOLD_OBSERVATION_SIZE, HoldEnvironment, split
+from kartzero.holds import (
+    HOLD_ACTIONS,
+    HOLD_LENGTHS,
+    HOLD_OBSERVATION_SIZE,
+    STEERING_HALVES,
+    HoldEnvironment,
+    race_for,
+    split,
+)
+from kartzero.network import DriverNetwork
 
 A_R, A, STRAIGHT, LEFT, RIGHT = 2, 1, 0, 1, 2
 
@@ -12,7 +21,7 @@ A_R, A, STRAIGHT, LEFT, RIGHT = 2, 1, 0, 1, 2
 def action(pedal, pedal_length, steering, steering_length):
     pedal_half = pedal * len(HOLD_LENGTHS) + HOLD_LENGTHS.index(pedal_length)
     steering_half = steering * len(HOLD_LENGTHS) + HOLD_LENGTHS.index(steering_length)
-    return pedal_half * HALF_CHOICES + steering_half
+    return pedal_half * STEERING_HALVES + steering_half
 
 
 def make():
@@ -67,3 +76,9 @@ def test_a_new_race_drops_any_hold():
     environment.reset()
     environment.step(action(A, 1, RIGHT, 1))
     assert game.held[-1] == ACTIONS[1 * 3 + RIGHT]
+
+
+def test_a_brain_with_hold_lengths_gets_a_race_with_hold_lengths():
+    race = RaceEnvironment(FakeGame(), FakeSensors())
+    assert isinstance(race_for(DriverNetwork(HOLD_OBSERVATION_SIZE, HOLD_ACTIONS), race), HoldEnvironment)
+    assert race_for(DriverNetwork(35, len(ACTIONS)), race) is race

@@ -6,14 +6,17 @@ Always picking the single likeliest button can look far worse while the odds are
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
 
-from kartzero.environment import ACTIONS, OBSERVATION_SIZE, RaceEnvironment
+from kartzero.environment import RaceEnvironment
 from kartzero.game import ROOT, Game
-from kartzero.network import DriverNetwork
+from kartzero.holds import race_for
+from kartzero.network import DriverNetwork, load_driver
 from kartzero.sensors import TrackSensors
+from kartzero.test_lap import Environment
 
 LATEST_CHECKPOINT = ROOT / "checkpoints" / "latest.pt"
 STUCK_DECISIONS = 300  # restart after 20 seconds with no progress, so there's always something to watch
@@ -29,16 +32,9 @@ class ViewerRun:
     sticky_chance: float = 0.0
 
 
-def _load_if_newer(network: DriverNetwork, checkpoint: Path, loaded_time: float) -> float:
-    if not checkpoint.exists() or checkpoint.stat().st_mtime <= loaded_time:
-        return loaded_time
-    modified = checkpoint.stat().st_mtime
-    network.load_state_dict(torch.load(checkpoint, map_location="cpu")["network"])
-    return modified
-
-
-def _race(game: Game, environment: RaceEnvironment, network: DriverNetwork, observation: np.ndarray) -> str:
+def _race(game: Game, environment: Environment, network: DriverNetwork) -> str:
     """Drive one race, rolling the dice on the odds. Returns how it went."""
+    observation: np.ndarray = environment.reset()
     best_progress, best_decision = 0.0, 0
     while not game.window_closed():
         with torch.no_grad():
@@ -57,36 +53,38 @@ def _race(game: Game, environment: RaceEnvironment, network: DriverNetwork, obse
 def run_viewer(checkpoint: Path = LATEST_CHECKPOINT) -> None:
     """Race over and over. If the file gets replaced, the next race uses the newer AI."""
     torch.set_num_threads(1)
-    network = DriverNetwork(OBSERVATION_SIZE, len(ACTIONS))
+    network: Optional[DriverNetwork] = None
     loaded_time = 0.0
     with Game() as game:
         game.open_window()
         game.load_snapshot()
-        environment = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
-        race = 0
+        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
+        number = 0
         while not game.window_closed():
-            race += 1
-            observation = environment.reset()
-            loaded_time = _load_if_newer(network, checkpoint, loaded_time)
-            print(f"viewer race {race}: {_race(game, environment, network, observation)}", flush=True)
+            if checkpoint.exists() and checkpoint.stat().st_mtime > loaded_time:
+                loaded_time = checkpoint.stat().st_mtime
+                network = load_driver(checkpoint)
+            if network is None:  # nothing saved yet
+                game.advance(60)
+                continue
+            number += 1
+            print(f"viewer race {number}: {_race(game, race_for(network, race), network)}", flush=True)
 
 
 def run_rotating_viewer(runs: list[ViewerRun]) -> None:
     """Take turns between runs, one race each, always with each run's newest AI and its own sticky chance."""
     torch.set_num_threads(1)
-    network = DriverNetwork(OBSERVATION_SIZE, len(ACTIONS))
     with Game() as game:
         game.open_window()
         game.load_snapshot()
-        environment = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
-        race = 0
+        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
+        number = 0
         while not game.window_closed():
-            run = runs[race % len(runs)]
-            race += 1
+            run = runs[number % len(runs)]
+            number += 1
             if not run.checkpoint.exists():
                 continue
-            network.load_state_dict(torch.load(run.checkpoint, map_location="cpu")["network"])
-            environment.sticky_chance = run.sticky_chance
+            network = load_driver(run.checkpoint)
+            race.sticky_chance = run.sticky_chance
             game.label_window(run.label)
-            observation = environment.reset()
-            print(f"viewer race {race}, {run.label}: {_race(game, environment, network, observation)}", flush=True)
+            print(f"viewer race {number}, {run.label}: {_race(game, race_for(network, race), network)}", flush=True)

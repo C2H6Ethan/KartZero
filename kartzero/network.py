@@ -1,4 +1,6 @@
-"""The AI's brain: from the 36 numbers to button odds and a guess of future points."""
+"""The AI's brain: from the numbers it receives to button odds and a guess of future points."""
+
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -21,6 +23,8 @@ class DriverNetwork(nn.Module):
 
     def __init__(self, inputs: int, actions: int) -> None:
         super().__init__()
+        self.inputs = inputs
+        self.actions = actions
         self._odds = _layers(inputs, actions, last_layer_size=0.01)  # small, so all actions start about equal
         self._guess = _layers(inputs, 1, last_layer_size=1.0)
 
@@ -30,3 +34,12 @@ class DriverNetwork(nn.Module):
             torch.distributions.Categorical(logits=self._odds(observations)),
             self._guess(observations).squeeze(-1) * VALUE_SCALE,
         )
+
+
+def load_driver(file: Path) -> DriverNetwork:
+    """Load a saved brain, whatever its size: the sizes of its first and last layers say what it is."""
+    state = torch.load(file, map_location="cpu")["network"]
+    first_layer, last_layer = state["_odds.0.weight"], state["_odds.4.weight"]
+    network = DriverNetwork(inputs=first_layer.shape[1], actions=last_layer.shape[0])
+    network.load_state_dict(state)
+    return network

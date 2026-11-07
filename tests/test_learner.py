@@ -83,3 +83,14 @@ def test_used_log_odds_pick_the_half_that_was_used():
     assert result[1] == pytest.approx(probs[1, 2, :].sum().log().item(), abs=1e-5)
     assert result[2] == pytest.approx(probs[2, :, 1].sum().log().item(), abs=1e-5)
     assert result[3] == pytest.approx(odds.log_prob(actions)[3].item(), abs=1e-5)
+
+
+def test_a_saved_brain_loads_with_its_own_sizes(tmp_path):
+    from kartzero.network import DriverNetwork, load_driver
+
+    network = DriverNetwork(37, 324)
+    torch.save({"network": network.state_dict()}, tmp_path / "brain.pt")
+    loaded = load_driver(tmp_path / "brain.pt")
+    assert (loaded.inputs, loaded.actions) == (37, 324)
+    observation = torch.randn(1, 37)
+    assert torch.equal(loaded(observation)[0].logits, network(observation)[0].logits)

@@ -1,28 +1,19 @@
-"""Drive a run's saved versions on test laps (likeliest action, no exploration) and count their boosts.
+"""Drive a run's saved versions on test laps (likeliest action, no exploration) and count their mini-turbos.
 
 Usage: python scripts/lap_boosts.py RUN [--every N]
-RUN is the end of a run folder's name, like "holds". Prints one line per tested version.
+RUN is a run's folder name or the end of it, like "holds". Prints one line per tested version.
 """
 
 import argparse
-import json
-from pathlib import Path
 
 import torch
 
 from kartzero.environment import RaceEnvironment
-from kartzero.game import ROOT, Game
-from kartzero.holds import make_environment, sizes
-from kartzero.network import DriverNetwork
+from kartzero.game import Game
+from kartzero.holds import race_for
+from kartzero.network import load_driver
+from kartzero.runs import find_run
 from kartzero.sensors import TrackSensors
-from kartzero.settings import Settings
-from kartzero.versions import VersionStore
-
-
-def load_settings(run_folder: Path) -> Settings:
-    saved = json.loads((run_folder / "settings.json").read_text())
-    known = Settings.__dataclass_fields__
-    return Settings(**{key: value for key, value in saved.items() if key in known})
 
 
 def main() -> None:
@@ -30,30 +21,29 @@ def main() -> None:
     parser.add_argument("run")
     parser.add_argument("--every", type=int, default=1, help="test only every Nth version")
     arguments = parser.parse_args()
-    run_folder = next(folder for folder in sorted((ROOT / "runs").iterdir()) if folder.name.endswith(arguments.run))
-    settings = load_settings(run_folder)
-    inputs, actions, _ = sizes(settings)
-    network = DriverNetwork(inputs, actions)
+    run = find_run(arguments.run)
     with Game() as game:
         game.load_snapshot()
-        environment = make_environment(RaceEnvironment(game, TrackSensors(game.track.collision_triangles())), settings)
-        for version in VersionStore(run_folder).all()[:: arguments.every]:
-            network.load_state_dict(torch.load(version.file, map_location="cpu")["network"])
+        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
+        for version in run.versions.all()[:: arguments.every]:
+            network = load_driver(version.file)
+            environment = race_for(network, race)
             observation = environment.reset()
-            boosts, highest, drifting = 0, 0, 0
+            boosts, highest_count, drifting = 0, 0, 0
             while True:
                 with torch.no_grad():
                     odds, _ = network(torch.as_tensor(observation[None]))
                 step = environment.step(int(odds.probs.argmax()))
                 observation = step.observation
+                count = game.kart.mini_turbo_count()
                 boosts += step.boost_started
-                highest = max(highest, game.kart.mini_turbo_count())
-                drifting += game.kart.mini_turbo_count() > 0
+                highest_count = max(highest_count, count)
+                drifting += count > 0
                 if step.finished or step.out_of_time:
                     break
-            time = f"{step.race_seconds:7.2f}s" if step.finished else f"reached {step.progress:.1%}"
+            result = f"{step.race_seconds:7.2f}s" if step.finished else f"reached {step.progress:.1%}"
             print(
-                f"{version.file.name}  {time}  boosts {boosts}  highest count {highest}  "
+                f"{version.file.name}  {result}  boosts {boosts}  highest count {highest_count}  "
                 f"drifting {drifting / step.decisions:.1%} of decisions",
                 flush=True,
             )
