@@ -103,3 +103,33 @@ def test_newness_of_compares_chosen_moments_with_all_of_them():
     novelty = torch.tensor([1.0, 1.0, 4.0, 2.0])
     assert _newness_of(novelty, torch.tensor([False, False, True, True])) == 3.0 / 2.0
     assert math.isnan(_newness_of(novelty, torch.zeros(4, dtype=torch.bool)))
+
+
+def test_a_resumed_log_gets_new_columns_without_losing_old_rows(tmp_path):
+    import csv
+
+    from kartzero.learner import TrainingLog
+
+    file = tmp_path / "log.csv"
+    first = TrainingLog(file)
+    first.write({"seconds": 1.0, "reward": 0.5})
+    first.write({"seconds": 2.0, "reward": 0.6})
+    resumed = TrainingLog(file)
+    resumed.write({"seconds": 3.0, "reward": 0.7, "boost_newness": 1.2})
+    rows = list(csv.DictReader(open(file, newline="")))
+    assert [row["seconds"] for row in rows] == ["1.0", "2.0", "3.0"]
+    assert [row["boost_newness"] for row in rows] == ["", "", "1.2"]
+    assert rows[1]["reward"] == "0.6"
+
+
+def test_a_column_no_longer_logged_stays_and_is_left_blank(tmp_path):
+    import csv
+
+    from kartzero.learner import TrainingLog
+
+    file = tmp_path / "log.csv"
+    TrainingLog(file).write({"seconds": 1.0, "share_at_count_3": 0.1})
+    TrainingLog(file).write({"seconds": 2.0, "share_at_count_4": 0.2})
+    rows = list(csv.DictReader(open(file, newline="")))
+    assert rows[0]["share_at_count_3"] == "0.1" and rows[1]["share_at_count_3"] == ""
+    assert rows[1]["share_at_count_4"] == "0.2"

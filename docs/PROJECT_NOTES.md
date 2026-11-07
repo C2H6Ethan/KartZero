@@ -168,6 +168,20 @@ Practice: 317 boosts in the first 53 minutes, 132 of them in minutes 48 to 53. I
 
 **17. Is the winning recipe luck? Seeds 2 and 3 (running).** Training uses random numbers for the brain's starting settings, the practice dice and the learning order, and a seed fixes them all. Every run so far used seed 1, and early luck can snowball, so part of 13 against 3 could be luck. `train.py` has a `--seed` option now. Running alongside seed 1, with the same settings (slow student, from new, hold lengths, curiosity 0.3, GAE 0.95, 4 emulators, 150 minutes): `curious-slow-new-seed2` and `curious-slow-new-seed3`. If both also reach many test-lap mini-turbos by about 50 minutes, the recipe works; if not, seed 1 was lucky.
 
+**17b. Seed results (measured, about 19:00).** Seed 1 ran 150 minutes. Seeds 2 and 3 were stopped at about 78 minutes (0.72M decisions). Test laps, counted with `lap_boosts.py`, now saved per run in `versions/mini_turbo_counts.csv` and shown by `watch.py --list`:
+
+| Seed | First lap with 10+ mini-turbos | Steadiest stretch | Laps there |
+|---:|---|---|---|
+| 1 | 0.48M decisions (50 min) | 1h10m–1h22m: 17, 14, 19, 16, 25 | 1:46.85 – 1:48.80 |
+| 2 | 0.61M decisions (67 min) | 1h07m–1h18m: 11, 5, 10, 11, 11 | 1:47.42 – 1:58.77 |
+| 3 | not by 0.72M | at most 1 per lap | — |
+
+So the recipe worked for 2 seeds out of 3, at different times. Seed 1 was the luckiest, not a fluke. Seed 1 also had waves: laps of 2:00 to 2:04 from 1h52m to 2h07m, then its best lap of all at 2h14m (1:45.66, 20 mini-turbos), whose neighbours were 1:55 and a lap that didn't finish.
+
+**The pick (step 1 of item 18):** seed 1's 1h13m brain (`0001h13m_000000692224_decisions.pt`), 1:46.85 with 14 mini-turbos. It's the fastest lap in the steadiest stretch, and both neighbours are strong. The 2h14m brain is faster, but its neighbours aren't.
+
+**Step 2, running from about 19:00:** `best-curiosity0` and `best-curiosity0.05`, 75 minutes each, 4 emulators each, from that brain, otherwise the same recipe (slow student, hold lengths, GAE 0.95).
+
 **18. Tonight's plan (agreed 7 November, about 18:20).** Rules written down before the results:
 1. When seed 1 finishes (about 18:50), test every recent version of all three seeds. Pick the best brain by test-lap mini-turbos and time, preferring one whose neighbouring versions also did well, because one lucky lap out of about 60 isn't trustworthy. Then stop seeds 2 and 3.
 2. From that brain, two runs of about 75 minutes on 4 emulators each, the same recipe except curiosity **0** against **0.05**, a small leftover (both keep the slow student). `boost_newness` is in the log for these, alongside `drift_newness`.

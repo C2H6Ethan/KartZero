@@ -408,6 +408,44 @@ def _share_at_count(observations: torch.Tensor, count: int) -> float:
     return float((observations[:, MINI_TURBO_INPUT] >= count / MINI_TURBO_SCALE).float().mean())
 
 
+class TrainingLog:
+    """The run's log.csv, one row of numbers per round.
+
+    A resumed run may log columns its older log doesn't have, or no longer log some. So before the
+    first row, the columns are lined up: new ones are added after the old ones, and any value a row
+    doesn't have is left blank. Nothing already in the log is lost.
+    """
+
+    def __init__(self, file: Path) -> None:
+        self._file = file
+        self._columns: Optional[list[str]] = None
+
+    def write(self, row: dict[str, float]) -> None:
+        if self._columns is None:
+            self._columns = self._line_up(list(row))
+        with open(self._file, "a", newline="") as file:
+            csv.DictWriter(file, fieldnames=self._columns, restval="").writerow(row)
+
+    def _line_up(self, columns: list[str]) -> list[str]:
+        if not self._file.exists():
+            with open(self._file, "w", newline="") as file:
+                csv.DictWriter(file, fieldnames=columns).writeheader()
+            return columns
+        with open(self._file, newline="") as file:
+            reader = csv.DictReader(file)
+            old_columns = list(reader.fieldnames or [])
+            rows = list(reader)
+        lined_up = old_columns + [column for column in columns if column not in old_columns]
+        if lined_up != old_columns:
+            temporary = self._file.with_suffix(".tmp")
+            with open(temporary, "w", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=lined_up, restval="")
+                writer.writeheader()
+                writer.writerows(rows)
+            os.replace(temporary, self._file)
+        return lined_up
+
+
 def _code_version() -> str:
     """The commit, marked if tracked files had changes that weren't committed yet."""
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT)
@@ -452,43 +490,35 @@ def run_training(
     lap_tester.start()
     start = time.perf_counter()
     round_number = 0
-    log_file = run_folder / "log.csv"
-    needs_header = not log_file.exists()
-    with open(log_file, "a", newline="") as file:
-        writer: Optional[csv.DictWriter[str]] = None
-        while True:
-            round_number += 1
-            stats = trainer.train_round()
-            elapsed = time.perf_counter() - start
-            total_seconds = trainer.earlier_seconds + elapsed
-            stats = {"seconds": total_seconds} | stats
-            if writer is None:
-                writer = csv.DictWriter(file, fieldnames=list(stats))
-                if needs_header:
-                    writer.writeheader()
-            writer.writerow(stats)
-            file.flush()
-            if trainer.total_decisions >= next_version:
-                versions_to_test.put(trainer.save_version(total_seconds))
-                next_version = next_version_after(trainer.total_decisions)
-            if round_number % SAVE_EVERY_ROUNDS == 0:
-                trainer.save(total_seconds)
-            if round_number % PRINT_EVERY_ROUNDS == 0:
-                speed = (stats["decisions"] - saved["decisions"] if saved else stats["decisions"]) / elapsed * 3600 / 1e6
-                end_progress = stats["average_end_progress"]
-                print(
-                    f"{total_seconds / 60:6.1f} min  {stats['decisions'] / 1e6:6.3f}M decisions  {speed:5.2f}M/hour  "
-                    f"reward {stats['average_reward']:6.2f}  "
-                    f"race end progress {'  -  ' if math.isnan(end_progress) else format(end_progress, '6.3f')}  "
-                    f"finishes {int(stats['finishes'])}  best {stats['best_seconds']:6.1f}s  "
-                    f"boosts/min {stats['boosts_per_minute']:5.2f}  guess error {stats['guess_error']:7.3f}",
-                    flush=True,
-                )
-            if viewer is not None and not viewer.is_alive():
-                print("viewer window closed, stopping", flush=True)
-                break
-            if minutes is not None and elapsed >= minutes * 60:
-                break
+    log = TrainingLog(run_folder / "log.csv")
+    while True:
+        round_number += 1
+        stats = trainer.train_round()
+        elapsed = time.perf_counter() - start
+        total_seconds = trainer.earlier_seconds + elapsed
+        stats = {"seconds": total_seconds} | stats
+        log.write(stats)
+        if trainer.total_decisions >= next_version:
+            versions_to_test.put(trainer.save_version(total_seconds))
+            next_version = next_version_after(trainer.total_decisions)
+        if round_number % SAVE_EVERY_ROUNDS == 0:
+            trainer.save(total_seconds)
+        if round_number % PRINT_EVERY_ROUNDS == 0:
+            speed = (stats["decisions"] - saved["decisions"] if saved else stats["decisions"]) / elapsed * 3600 / 1e6
+            end_progress = stats["average_end_progress"]
+            print(
+                f"{total_seconds / 60:6.1f} min  {stats['decisions'] / 1e6:6.3f}M decisions  {speed:5.2f}M/hour  "
+                f"reward {stats['average_reward']:6.2f}  "
+                f"race end progress {'  -  ' if math.isnan(end_progress) else format(end_progress, '6.3f')}  "
+                f"finishes {int(stats['finishes'])}  best {stats['best_seconds']:6.1f}s  "
+                f"boosts/min {stats['boosts_per_minute']:5.2f}  guess error {stats['guess_error']:7.3f}",
+                flush=True,
+            )
+        if viewer is not None and not viewer.is_alive():
+            print("viewer window closed, stopping", flush=True)
+            break
+        if minutes is not None and elapsed >= minutes * 60:
+            break
     trainer.save(trainer.earlier_seconds + (time.perf_counter() - start))
     trainer.stop()
     # Any lap not finished here gets run on the next --resume, so there's no need to wait long.
