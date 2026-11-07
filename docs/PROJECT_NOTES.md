@@ -6,7 +6,7 @@ Where the project stands, and everything we've measured and decided. Last update
 
 ## Where we are now
 
-**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and on 7 November a curiosity-trained AI drove **1:38.83 with 37 mini-turbos**, the fastest test lap so far. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
+**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and overnight on 7 to 8 November a curiosity-trained AI **beat the staff ghost: 1:34.47 with 49 mini-turbos** on a test lap. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
 
 **Official times come from test laps.** Each saved version gets one race with no exploration, always the likeliest button, in `runs/<run>/versions/test_laps.csv`. `watch.py --list` shows them. A separate process runs them, so training doesn't wait, and any untested versions get tested on the next `--resume`. Practice can mislead: the first AI reached 80% with dice rolls but just held reverse on top picks. The live viewer rolls the dice, so it shows practice, not test results.
 
@@ -206,6 +206,7 @@ Night checks:
 - 22:13: seed 1 at 3.28M: **1:38.83 with 37 mini-turbos** (at 4h54m), **the fastest test lap of any AI so far**, 2.6 seconds better than the no-drift record of 1:41.40, and 2.35 seconds off the staff ghost (1:36.48). Also 1:40.41 with 33 and 1:41.35 with 35. Seed 2 at 2.05M: best 1:43.25 with 28, and 16 to 28 per lap.
 - 23:03: seed 1 at 3.92M: a dip (1:45 to 1:51 from 5h02m to 5h26m), then 1:41.14 with 35 and 1:40.45 with **40**, the most mini-turbos yet. Best still 1:38.83. Seed 2 at 2.67M: best 1:43.20 with 25.
 - 23:54: seed 1 at 4.54M: 33 to 44 mini-turbos on every lap since 5h34m, laps 1:40.39 to 1:46.94, best still 1:38.83. Seed 2 at 3.28M caught up: **1:38.86 with 36** (at 4h34m), and 1:39.79 with 27. Two seeds of the same recipe now drive about 1:39, so it isn't one lucky run.
+- 00:49 (8 November): **seed 1 beat the staff ghost: 1:34.47 with 49 mini-turbos** (at 7h19m, 5.11M decisions, `0007h19m_000005113856_decisions.pt`), 2.0 seconds under 1:36.48. Next version: 1:37.06 with 43. Since 6h44m every lap has 43 to 49 mini-turbos. Seed 2 at 4.04M: best 1:38.16 with 42.
 
 Next steps, in order:
 1. Carry out item 18.
@@ -218,7 +219,7 @@ Beat **1:27.832** on Figure-8 Circuit self-taught.
 
 | Order | Target | Time | Source |
 |---:|---|---:|---|
-| 1 | Staff ghost | 1:36.481 | Shown in the game |
+| 1 | Staff ghost, **beaten 8 November: 1:34.47** | 1:36.481 | Shown in the game |
 | 2 | **MarI/O Kart, the main goal** | 1:27.832 | Its video: laps 29.717, 29.107, 29.008, with 73 mini-turbos |
 | 3 | My best time | 1:23.013, best lap 27.158 | My save. I don't know if it used the mushroom |
 | 4 | Human record, stretch only | 1:11.387 | mkwrs, Taiga, 19 April 2024. Other sites list 1:11.510 and 1:11.625, so recheck before quoting it |
