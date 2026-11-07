@@ -168,11 +168,17 @@ Practice: 317 boosts in the first 53 minutes, 132 of them in minutes 48 to 53. I
 
 **17. Is the winning recipe luck? Seeds 2 and 3 (running).** Training uses random numbers for the brain's starting settings, the practice dice and the learning order, and a seed fixes them all. Every run so far used seed 1, and early luck can snowball, so part of 13 against 3 could be luck. `train.py` has a `--seed` option now. Running alongside seed 1, with the same settings (slow student, from new, hold lengths, curiosity 0.3, GAE 0.95, 4 emulators, 150 minutes): `curious-slow-new-seed2` and `curious-slow-new-seed3`. If both also reach many test-lap mini-turbos by about 50 minutes, the recipe works; if not, seed 1 was lucky.
 
+**18. Tonight's plan (agreed 7 November, about 18:20).** Rules written down before the results:
+1. When seed 1 finishes (about 18:50), test every recent version of all three seeds. Pick the best brain by test-lap mini-turbos and time, preferring one whose neighbouring versions also did well, because one lucky lap out of about 60 isn't trustworthy. Then stop seeds 2 and 3.
+2. From that brain, two runs of about 75 minutes on 4 emulators each, the same recipe except curiosity **0** against **0.05**, a small leftover (both keep the slow student). `boost_newness` is in the log for these, alongside `drift_newness`.
+3. The winner has the fastest average of its last 5 test laps, as long as it still fires mini-turbos (at least 3 per lap on average over those 5). Plain driving at about 1:42 can never reach 1:27.8, so a run that has dropped them can't win. If neither keeps them, 0.05 wins, because it can still explore.
+4. Overnight: the winning setting, from the winner's best brain, on all 8 emulators, for 10 hours.
+5. Allowed to switch to something new overnight, but only if the run is clearly failing. That means, at least 2 hours in, both: no new best test lap in the last hour with the last-5 average no better than the starting brain's, **and** test-lap mini-turbos trending to about 0 (or practice reward falling for over an hour). In order of what to try: raise curiosity again from the best brain, then a different student speed, then a replay-based method (IQN). Every switch and its reason goes in these notes.
+
 Next steps, in order:
-1. Compare seeds 1, 2 and 3 of the winning recipe with `scripts/lap_boosts.py`.
-2. If the recipe holds, make its mini-turbos pay: from its best brain, turn curiosity down in steps or fade it slowly, and watch whether test laps get faster than 1:43 while mini-turbos stay. `curious-fade` showed that unreliable mini-turbos are dropped, so only fade once they're reliable.
-3. Log `drift_newness` for boost moments too, to see whether boosting is still new when drifting is familiar.
-4. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses.
+1. Carry out item 18.
+2. In the morning: test laps and mini-turbos across the overnight run, and compare with the staff ghost (1:36.48) and MarI/O Kart (1:27.83).
+3. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses.
 
 ## Goal and targets
 

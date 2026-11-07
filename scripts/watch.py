@@ -84,14 +84,16 @@ def list_versions(run: TrainingRun) -> None:
     print(f"{run.name}: {run.changed_settings()}, started from {run.started_from()}\n")
     test_laps = run.versions.test_laps()
     best = run.best_test_lap()
-    print("training time    decisions   practice progress   test lap")
+    print("training time    decisions   practice progress   test lap   mini-turbos")
     for version in run.versions.all():
         progress = "-" if math.isnan(version.average_end_progress) else f"{version.average_end_progress:.1%}"
         marks = "  best" if best and best[0].file == version.file else ""
         marks += "  start" if version.decisions == 0 else ""
+        lap = test_laps.get(version.file.name)
+        mini_turbos = "-" if lap is None or lap.mini_turbos is None else str(lap.mini_turbos)
         print(
             f"{training_time(version.minutes)}  {version.decisions:11,}   {progress:>17}   "
-            f"{lap_text(test_laps.get(version.file.name)):>8}{marks}"
+            f"{lap_text(lap):>8}   {mini_turbos:>11}{marks}"
         )
 
 

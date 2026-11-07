@@ -22,15 +22,18 @@ class Environment(Protocol):
 
 
 def drive_test_lap(network: Any, environment: Environment) -> LapResult:
-    """Drive one race, always choosing the likeliest action. It ends at the finish or the time limit."""
+    """Drive one race, always choosing the likeliest action, and count its mini-turbos.
+    It ends at the finish or the time limit."""
     observation = environment.reset()
+    mini_turbos = 0
     while True:
         with torch.no_grad():
             odds, _ = network(torch.as_tensor(observation[None]))
         step = environment.step(int(odds.probs.argmax()))
         observation = step.observation
+        mini_turbos += step.boost_started  # every boost is a mini-turbo: items are off
         if step.finished or step.out_of_time:
-            return LapResult(step.finished, step.race_seconds, step.progress)
+            return LapResult(step.finished, step.race_seconds, step.progress, mini_turbos)
 
 
 def run_lap_tester(versions_to_test: "Queue[Optional[Path]]", run_folder: Path) -> None:
@@ -45,7 +48,7 @@ def run_lap_tester(versions_to_test: "Queue[Optional[Path]]", run_folder: Path) 
             network = load_driver(file)
             result = drive_test_lap(network, race_for(network, race))
             store.save_test_lap(file, result)
-            print(f"test lap {file.name}: {result.description()}", flush=True)
+            print(f"test lap {file.name}: {result.description()}, {result.mini_turbos} mini-turbos", flush=True)
 
         tested = store.test_laps()
         for version in store.all():

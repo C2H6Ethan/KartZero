@@ -16,6 +16,8 @@ SHORT_NAMES = {
     "advantage_blend": "blend",
     "hold_lengths": "holds",
     "curiosity_weight": "curiosity",
+    "curiosity_learning_rate": "student rate",
+    "curiosity_fade_decisions": "fade",
 }
 
 

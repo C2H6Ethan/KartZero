@@ -10,14 +10,14 @@ import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 SMALLEST_GAP = 25_000  # about a minute of training
 GROWTH_PER_VERSION = 1.03
 INDEX_FILE = "versions.csv"
 TEST_LAPS_FILE = "test_laps.csv"
 FIELDS = ["file", "decisions", "minutes", "average_end_progress"]
-TEST_LAP_FIELDS = ["file", "finished", "seconds", "progress"]
+TEST_LAP_FIELDS = ["file", "finished", "seconds", "progress", "mini_turbos"]
 
 
 def training_time(minutes: float) -> str:
@@ -51,6 +51,7 @@ class LapResult:
     finished: bool
     seconds: float
     progress: float
+    mini_turbos: Optional[int] = None  # None for laps recorded before they were counted
 
     def description(self) -> str:
         """A race time if it finished, otherwise how far it got."""
@@ -69,12 +70,32 @@ class VersionStore:
         self._test_laps = self._folder / TEST_LAPS_FILE
 
     def save_test_lap(self, version_file: Path, result: LapResult) -> None:
+        self._upgrade_test_laps_file()
         is_new_file = not self._test_laps.exists()
         with open(self._test_laps, "a", newline="") as file:
             writer = csv.writer(file)
             if is_new_file:
                 writer.writerow(TEST_LAP_FIELDS)
-            writer.writerow([version_file.name, result.finished, f"{result.seconds:.3f}", f"{result.progress:.4f}"])
+            mini_turbos = "" if result.mini_turbos is None else result.mini_turbos
+            writer.writerow(
+                [version_file.name, result.finished, f"{result.seconds:.3f}", f"{result.progress:.4f}", mini_turbos]
+            )
+
+    def _upgrade_test_laps_file(self) -> None:
+        """Files from before mini-turbos were counted get the new column, empty for their old laps."""
+        if not self._test_laps.exists():
+            return
+        with open(self._test_laps, newline="") as file:
+            rows = list(csv.reader(file))
+        if not rows or rows[0] == TEST_LAP_FIELDS:
+            return
+        missing = len(TEST_LAP_FIELDS) - len(rows[0])
+        temporary = self._test_laps.with_suffix(".tmp")
+        with open(temporary, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(TEST_LAP_FIELDS)
+            writer.writerows(row + [""] * missing for row in rows[1:])
+        os.replace(temporary, self._test_laps)
 
     def test_laps(self) -> dict[str, LapResult]:
         """The test lap of each version that has one, by file name."""
@@ -82,7 +103,12 @@ class VersionStore:
             return {}
         with open(self._test_laps, newline="") as file:
             return {
-                row["file"]: LapResult(row["finished"] == "True", float(row["seconds"]), float(row["progress"]))
+                row["file"]: LapResult(
+                    row["finished"] == "True",
+                    float(row["seconds"]),
+                    float(row["progress"]),
+                    int(row["mini_turbos"]) if row.get("mini_turbos") else None,
+                )
                 for row in csv.DictReader(file)
             }
 
