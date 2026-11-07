@@ -105,7 +105,7 @@ The tools for it:
 
 Tested on the real game: the weight fell from 0.292 to 0.146 over half of a 20,000-decision fade, the warm-up paid nothing, and a resumed run picked up the saved state.
 
-**11. The curiosity AI dropped mini-turbos by itself, with the bonus still on (measured).** `curious-EXPERIMENT` (stopped at 87 minutes, 1.04M decisions), averaged over stretches of about 8 minutes:
+**11. The curiosity AI dropped mini-turbos by itself, with the bonus still on (measured).** `curious-EXPERIMENT` (stopped at 101 minutes, 1.20M decisions; I first wrote 87 minutes by mistake), averaged over stretches of about 8 minutes:
 
 | Training time | Practice at count 2+ | Practice at count 4 | Boosts in practice |
 |---|---:|---:|---:|
@@ -115,21 +115,61 @@ Tested on the real game: the weight fell from 0.292 to 0.146 over half of a 20,0
 | 47–55 min | 2.9% | 0.25% | 18 |
 | 63–70 min | 2.0% | 0.05% | 4 |
 | 78–86 min | 1.1% | 0.04% | 4 |
+| 86–94 min | 1.5% | 0.06% | 7 |
+| 94–102 min | **3.3%** | 0.19% | **20** |
 
 Test laps, every version from 35 to 58 minutes (`lap_boosts.py curious-EXPERIMENT --between 35 60`):
 - the 43- and 45-minute brains fired 1 and 2 boosts, drifting 37% and 36% of the time
 - from 48 minutes on, no boosts (except reaching count 4 once at 54 minutes)
-- brains from 56 to 87 minutes drift only 4 to 16% of the time, with 0 boosts
+- brains from 56 to 98 minutes drift only 4 to 16% of the time, with 0 boosts
 
-The likely reason: once drifting became familiar, its bonus faded, and the plain points took over (about +2 for a good mini-turbo, about −15 for a failed drift). Its attempts weren't reliable enough, so it dropped them. That's the prediction made before the fade, happening early.
+The likely reason: once drifting became familiar, its bonus faded, and the plain points took over (about +2 for a good mini-turbo, about −15 for a failed drift). Its attempts weren't reliable enough, so it dropped them. That's the prediction made before the fade, happening early. **Then a second wave:** practice drifting rose again from about 86 minutes (20 boosts in the last 8 minutes), though test laps hadn't caught up by 98 minutes. The likely reason: while the AI rarely drifted, the student network forgot drift moments, so they became new again. So with a constant bonus, drifting seems to come in waves rather than once.
 
-**Running now:**
-- `curious-noholds`: curiosity without hold lengths, until about 17:00. At 49 minutes: count 2+ in 0.3% of practice and about 2 boosts, far fewer than with hold lengths at the same time.
-- `curious-fade`: from the 45-minute peak brain (not the newest), curiosity 0.3 fading to 0 over 600k decisions (about 55 minutes), then about an hour at 0, 4 emulators, hold lengths, GAE 0.95.
+**12. Hold lengths are needed for curiosity to work (measured).** Over the first 56 minutes, same settings except hold lengths:
+
+| Run | Decisions | Practice at count 2+ | At count 4 | Boosts in practice |
+|---|---:|---:|---:|---:|
+| with hold lengths (`curious-EXPERIMENT`) | 0.63M | **2.0%** | 0.13% | **63** |
+| without (`curious-noholds`, stopped at 56 min) | 0.71M | 0.4% | 0.01% | 9 |
+
+So hold lengths stay.
+
+**13. Making the curious phase last longer (running).** Item 11 suggests the AI quits before its mini-turbos get reliable, because drifting stops being new after about 15 minutes. Curiosity is a bonus for any unusual moment (a wall it normally avoids, off-road, an odd crash angle, or a drift), and slowing the student network keeps all of them new for longer, the distracting ones included. `--curiosity-learning-rate` sets how fast the student learns (default 0.0001). `curious-slow` uses 0.000025, 4 times slower (a guess), with the weight at a constant 0.3, from the 45-minute peak brain. The idea, suggested on 7 November: build a starting point that boosts a lot, and only then fade.
+
+**Running now (three runs, 4 emulators each, sharing the 8 cores):**
+- `curious-fade`: from the 45-minute peak brain, curiosity 0.3 fading to 0 over 600k decisions, then about an hour at 0. It did better than predicted early on. At 17 minutes (0.21M decisions, weight down to 0.20) it had about 54 practice boosts, count 2+ rising from 2.8% to 3.9%, and `drift_newness` about 1.2 to 1.4. So drifting is fairly familiar, yet it keeps doing it so far.
+- `curious-slow`: the slower student (item 13), from the 45-minute peak brain.
+- `curious-slow-new`: the same recipe as `curious-slow`, but from an untrained brain. The question: does a fresh start under the slower student end up higher than starting from the peak? The peak brain grew up with the fast student, while a fresh one would be shaped by the slower student from the first minute.
+
+**14. Test-lap boosts so far (measured about 16:40).** Every saved version, counted with `lap_boosts.py`. Both peak-start runs begin from the same brain, which had 2 boosts, so that one isn't counted for either.
+
+| Run | Versions after the start | Versions with a boost | Most in one lap |
+|---|---:|---:|---|
+| `curious-slow` (slow student, from the peak) | 7, up to 17 min | 2 | **3**, at 11.8 min (1:56.11, drifting 31.5%) |
+| `curious-fade` (fading, from the peak) | 12, up to 28 min | 1 | 1, at 6 min |
+| `curious-slow-new` (slow student, from new) | 4, up to 10 min | 0 | still learning to drive |
+
+3 mini-turbos in one test lap is the most so far.
+
+**15. The slow student from new: 13 mini-turbos in one test lap (measured, about 17:20).** `curious-slow-new` test laps, each version:
+
+| Training time | Lap | Mini-turbos | Drifting |
+|---|---:|---:|---:|
+| 28 min | 1:53.80 | 0 | 27% |
+| 33 min | 1:53.14 | 2 | 38% |
+| 36 min | 1:51.04 | 1 | 24% |
+| 39 min | 1:51.10 | 1 | 26% |
+| 42 min | 1:51.26 | 0 | 17% |
+| 45 min | 1:56.30 | 1 | 22% |
+| 47 min | 1:52.46 | 2 | 35% |
+| 50 min | 1:53.29 | **13** | 58% |
+| 53 min | 1:59.45 | **10** | 56% |
+
+Practice: 317 boosts in the first 53 minutes, 132 of them in minutes 48 to 53. It drifts much more than the peak-start runs did, and it learned to drive at about the same pace as the normal student (item 13). Laps are still slower than the 1:43 of plain driving, so its mini-turbos don't pay for its drifting yet.
 
 Next steps, in order:
 1. Watch `curious-fade` with `scripts/lap_boosts.py curious-fade`: when, if ever, do test-lap boosts drop off as the weight falls? The prediction: it keeps mini-turbos where they reliably work and drops them where they mostly fail. Given item 11, expect a decline unless its attempts become reliable first.
-2. Compare `curious-noholds` with `curious-EXPERIMENT`. If curiosity drifts just as well without hold lengths, remove hold lengths and go back to the simpler 9 actions.
+2. If `curious-slow` reaches several test-lap boosts per lap over a few versions in a row, fade from there and compare with `curious-fade`.
 3. Try a few curiosity weights, since 0.3 was a guess.
 4. If mini-turbos stay but stall, measure a replay-based method such as IQN.
 
@@ -214,7 +254,7 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 | `scripts/replay_check.py` | Checks that the same buttons give the same result |
 | `scripts/progress_check.py` | Checks race progress by driving forward, reversing and completing laps with a test driver |
 | `scripts/train.py` | Trains on 8 emulators with a live window. Closing the window stops training and saves. Results go in `runs/`, and the newest AI in `checkpoints/latest.pt`. Add `--resume` to carry on the same run from that save. `--sticky-chance`, `--hold-lengths`, `--curiosity-weight`, `--start-from <version>`, `--checkpoint`, `--name` and `--decisions-per-chunk` let several runs go side by side |
-| `scripts/watch.py` | Shows the newest saved AI racing in the window, with no training. `--list` sums up every run: sticky chance, where it started, time trained, best and newest test lap. `--list <run>` shows each version of one run, marking the start and the best. `--run <run>` plays a run's newest version, and `--hours 30` plays the one nearest 30 hours (add `--run` to pick the run). A run can be named by the end of its folder name, like `213453` or `sticky0.25`. A run's first version is its starting brain, so it never counts as the best. `--compare` takes turns between the `checkpoints/compare-sticky*.pt` runs, one race each with each run's newest AI and sticky chance, and labels which one it is |
+| `scripts/watch.py` | Shows the newest saved AI racing in the window, with no training. `--list` sums up every run: sticky chance, where it started, time trained, best and newest test lap. `--list <run>` shows each version of one run, marking the start and the best. `--run <run>` plays a run's newest version, checking again before every race so it keeps up with training, with the run and training time in the window's label, and `--hours 30` plays the one nearest 30 hours (add `--run` to pick the run). A run can be named by the end of its folder name, like `213453` or `sticky0.25`. A run's first version is its starting brain, so it never counts as the best. `--compare` takes turns between the `checkpoints/compare-sticky*.pt` runs, one race each with each run's newest AI and sticky chance, and labels which one it is |
 | `scripts/lap_boosts.py` | Drives a run's saved versions on test laps and counts boosts, the highest mini-turbo count and how much of the race it drifts. `--every N` tests every Nth version |
 | `scripts/retime_test_laps.py` | Re-drives every version of a run to record test laps in official game time. Only for runs that have stopped training |
 | `scripts/observation_check.py` | Builds the AI's inputs through a real race, and shows the range of each one |

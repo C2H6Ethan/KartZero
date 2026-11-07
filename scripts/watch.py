@@ -4,7 +4,7 @@ Usage:
   python scripts/watch.py                          the newest AI, from checkpoints/latest.pt
   python scripts/watch.py --list                   every run: its settings, best and newest test lap
   python scripts/watch.py --list sticky0.5         every saved version of one run, with its test lap
-  python scripts/watch.py --run sticky0.5          the newest saved version of one run
+  python scripts/watch.py --run sticky0.5          one run, always its newest saved version: each race uses the newest
   python scripts/watch.py --hours 30               the version nearest 30 hours of training, in the newest run
   python scripts/watch.py --hours 1 --run 0.25     the same, in one run
   python scripts/watch.py --compare                take turns between the sticky comparison runs, one race each
@@ -15,7 +15,7 @@ A run can be named by its whole folder name, or the end of it, like 213453 or st
 import argparse
 import math
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from kartzero.runs import TrainingRun, all_runs, find_run
 from kartzero.versions import LapResult, training_time
@@ -24,11 +24,17 @@ ROOT = Path(__file__).resolve().parent.parent
 ALL_RUNS = "*"
 
 
-def watch(checkpoint: Optional[Path] = None) -> None:
+def watch(brain: Optional[Callable[[], Path]] = None) -> None:
+    """Race over and over. `brain` says which saved AI to drive, asked again before every race."""
     # Loaded only here, because PyTorch and the emulator are slow to load and --list needs neither.
     from kartzero.viewer import LATEST_CHECKPOINT, run_viewer
 
-    run_viewer(checkpoint or LATEST_CHECKPOINT)
+    run_viewer(brain or (lambda: LATEST_CHECKPOINT))
+
+
+def newest_version(run: TrainingRun) -> Path:
+    """The run's newest saved version right now. Training keeps adding versions, so ask again each race."""
+    return run.versions.all()[-1].file
 
 
 def watch_comparison() -> None:
@@ -111,10 +117,13 @@ def main() -> None:
             if not runs:
                 raise SystemExit("no saved versions yet: train first")
             run = runs[-1]
-            versions = run.versions
-            version = versions.closest_to(arguments.hours * 60) if arguments.hours is not None else versions.all()[-1]
-            print(f"watching {run.name} after {training_time(version.minutes)} of training, {version.decisions:,} decisions")
-            watch(version.file)
+            if arguments.hours is None:
+                print(f"watching {run.name}, each race with its newest saved version")
+                watch(lambda: newest_version(run))
+            else:
+                version = run.versions.closest_to(arguments.hours * 60)
+                print(f"watching {run.name} after {training_time(version.minutes)} of training, {version.decisions:,} decisions")
+                watch(lambda: version.file)
         else:
             watch()
     except ValueError as error:

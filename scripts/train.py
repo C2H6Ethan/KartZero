@@ -1,6 +1,6 @@
 """Train the AI on Figure-8. Closing the viewer window stops training and saves its progress.
 
-Usage: python scripts/train.py [--resume] [--minutes N] [--no-viewer] [--emulators N]
+Usage: python scripts/train.py [--resume] [--minutes N] [--seed N] [--no-viewer] [--emulators N]
     [--decisions-per-chunk N] [--sticky-chance P] [--hold-lengths]
     [--curiosity-weight W] [--curiosity-fade-decisions N] [--curiosity-learning-rate R] [--exploration-weight W] [--advantage-blend L] [--start-from VERSION] [--checkpoint FILE] [--name NAME]
 Run make_start_state.py first.
@@ -23,6 +23,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--minutes", type=float, default=None)
+    parser.add_argument("--seed", type=int, default=1, help="starts every random number in the run, so the same seed repeats it")
     parser.add_argument("--no-viewer", action="store_true")
     parser.add_argument("--emulators", type=int, default=8)
     parser.add_argument("--decisions-per-chunk", type=int, default=256)
@@ -44,6 +45,7 @@ def main() -> None:
         viewer = mp.get_context("spawn").Process(target=show_viewer)
         viewer.start()
     settings = Settings(
+        seed=arguments.seed,
         emulators=arguments.emulators,
         decisions_per_chunk=arguments.decisions_per_chunk,
         sticky_chance=arguments.sticky_chance,

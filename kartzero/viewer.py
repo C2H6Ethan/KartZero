@@ -6,7 +6,7 @@ Always picking the single likeliest button can look far worse while the odds are
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -50,25 +50,35 @@ def _race(game: Game, environment: Environment, network: DriverNetwork) -> str:
     return "window closed"
 
 
-def run_viewer(checkpoint: Path = LATEST_CHECKPOINT) -> None:
-    """Race over and over. If the file gets replaced, the next race uses the newer AI."""
+def run_viewer(brain: Callable[[], Path] = lambda: LATEST_CHECKPOINT) -> None:
+    """Race over and over. `brain` says which saved AI to drive, and it's asked again before every
+    race, so a newer file, or a file that was replaced, is picked up for the next race."""
     torch.set_num_threads(1)
     network: Optional[DriverNetwork] = None
-    loaded_time = 0.0
+    loaded: Optional[tuple[Path, float]] = None  # which file is loaded, and when it was written
     with Game() as game:
         game.open_window()
         game.load_snapshot()
         race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
         number = 0
         while not game.window_closed():
-            if checkpoint.exists() and checkpoint.stat().st_mtime > loaded_time:
-                loaded_time = checkpoint.stat().st_mtime
-                network = load_driver(checkpoint)
+            file = brain()
+            if file.exists() and loaded != (file, file.stat().st_mtime):
+                loaded = (file, file.stat().st_mtime)
+                network = load_driver(file)
+                game.label_window(_describe(file))
             if network is None:  # nothing saved yet
                 game.advance(60)
                 continue
             number += 1
-            print(f"viewer race {number}: {_race(game, race_for(network, race), network)}", flush=True)
+            print(f"viewer race {number}, {_describe(file)}: {_race(game, race_for(network, race), network)}", flush=True)
+
+
+def _describe(file: Path) -> str:
+    """A short name for a saved AI: its run and training time for a saved version, else the file name."""
+    if file.parent.name == "versions":
+        return f"{file.parent.parent.name}  {file.name.split('_')[0]}"
+    return file.name
 
 
 def run_rotating_viewer(runs: list[ViewerRun]) -> None:
