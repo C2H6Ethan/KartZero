@@ -63,3 +63,16 @@ def test_curiosity_does_not_change_the_ais_own_random_numbers():
     torch.manual_seed(5)
     Curiosity(6, torch.device("cpu"), seed=1)
     assert torch.equal(torch.rand(3), expected)
+
+
+def test_a_slower_learning_rate_keeps_moments_new_for_longer():
+    torch.manual_seed(0)
+    familiar = torch.randn(2048, 6) * 0.1
+    errors = []
+    for rate in (1e-4, 2.5e-5):
+        curiosity = Curiosity(6, torch.device("cpu"), learning_rate=rate)
+        for _ in range(10):
+            curiosity.learn(familiar)
+        with torch.no_grad():
+            errors.append(float(curiosity._error(familiar).mean()))
+    assert errors[1] > errors[0]

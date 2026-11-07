@@ -17,7 +17,7 @@ from torch import nn
 
 FEATURES = 64
 HIDDEN = 128
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-4  # how fast moments become familiar: slower keeps them new for longer
 EPSILON = 1e-8
 MAX_NOVELTY = 5.0  # so one odd moment can't swamp everything else
 # A new predictor finds everything equally strange, so its first scores are noise. It learns
@@ -45,7 +45,7 @@ def _network(inputs: int, hidden_layers: int) -> nn.Sequential:
 class Curiosity:
     """Scores how new each moment is, and learns from the moments it's shown."""
 
-    def __init__(self, inputs: int, device: torch.device, seed: int = 0) -> None:
+    def __init__(self, inputs: int, device: torch.device, seed: int = 0, learning_rate: float = LEARNING_RATE) -> None:
         generator_state = torch.random.get_rng_state()
         torch.manual_seed(seed + 12345)  # its own random networks, without disturbing the AI's seed
         self._target = _network(inputs, 1).to(device)
@@ -53,7 +53,7 @@ class Curiosity:
         torch.random.set_rng_state(generator_state)
         for parameter in self._target.parameters():
             parameter.requires_grad_(False)
-        self._optimizer = torch.optim.Adam(self._predictor.parameters(), lr=LEARNING_RATE)
+        self._optimizer = torch.optim.Adam(self._predictor.parameters(), lr=learning_rate)
         self._mean = torch.zeros(inputs, device=device)
         self._variance = torch.ones(inputs, device=device)
         self._seen = 0

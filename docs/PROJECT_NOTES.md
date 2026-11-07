@@ -92,10 +92,43 @@ So it speeds up learning but doesn't raise the ceiling or find drifting alone.
 
 - Driving is slower while the bonus is on: best test lap 1:45.96, against 1:43.22 for `holds` alone.
 
-**Running now:** `curious-EXPERIMENT` (until about 16:20) and `curious-noholds` (curiosity without hold lengths, until about 17:00, to find out whether hold lengths are needed for this).
+**10. Handing over from curiosity to speed alone (built 7 November).** The aim is an AI that does mini-turbos because they're fast, not because they're new. Signs that it's ready:
+- test laps (no bonus) show boosts reliably, several per lap over 3 or 4 versions in a row
+- `drift_newness` in the log falls towards 1, meaning drift moments (count 2 or more) look no newer than average, so the bonus is no longer what keeps it drifting
+- practice boosts hold steady while that happens
+
+The tools for it:
+- `--curiosity-fade-decisions N` lowers the weight in a straight line to 0 over the first N decisions of a run.
+- The log shows `curiosity_weight` and `drift_newness`.
+- Checkpoints now save the curiosity network, so `--resume` carries on smoothly.
+- A run started from a saved brain gets a fresh curiosity network, which first learns for 20 chunks (about 2 minutes on 8 emulators) without paying any bonus, because a new one finds everything equally strange.
+
+Tested on the real game: the weight fell from 0.292 to 0.146 over half of a 20,000-decision fade, the warm-up paid nothing, and a resumed run picked up the saved state.
+
+**11. The curiosity AI dropped mini-turbos by itself, with the bonus still on (measured).** `curious-EXPERIMENT` (stopped at 87 minutes, 1.04M decisions), averaged over stretches of about 8 minutes:
+
+| Training time | Practice at count 2+ | Practice at count 4 | Boosts in practice |
+|---|---:|---:|---:|
+| 0–9 min | 0.5% | 0.02% | 3 |
+| 29–38 min | 1.8% | 0.15% | 11 |
+| 38–46 min | **4.0%** | 0.33% | **23** |
+| 47–55 min | 2.9% | 0.25% | 18 |
+| 63–70 min | 2.0% | 0.05% | 4 |
+| 78–86 min | 1.1% | 0.04% | 4 |
+
+Test laps, every version from 35 to 58 minutes (`lap_boosts.py curious-EXPERIMENT --between 35 60`):
+- the 43- and 45-minute brains fired 1 and 2 boosts, drifting 37% and 36% of the time
+- from 48 minutes on, no boosts (except reaching count 4 once at 54 minutes)
+- brains from 56 to 87 minutes drift only 4 to 16% of the time, with 0 boosts
+
+The likely reason: once drifting became familiar, its bonus faded, and the plain points took over (about +2 for a good mini-turbo, about −15 for a failed drift). Its attempts weren't reliable enough, so it dropped them. That's the prediction made before the fade, happening early.
+
+**Running now:**
+- `curious-noholds`: curiosity without hold lengths, until about 17:00. At 49 minutes: count 2+ in 0.3% of practice and about 2 boosts, far fewer than with hold lengths at the same time.
+- `curious-fade`: from the 45-minute peak brain (not the newest), curiosity 0.3 fading to 0 over 600k decisions (about 55 minutes), then about an hour at 0, 4 emulators, hold lengths, GAE 0.95.
 
 Next steps, in order:
-1. When `curious-EXPERIMENT` ends, carry on from its newest brain with curiosity turned down or off, and count test-lap boosts after each step. Does it keep mini-turbos for speed alone? The prediction: it keeps them where they reliably work (straights) and drops them where they mostly fail.
+1. Watch `curious-fade` with `scripts/lap_boosts.py curious-fade`: when, if ever, do test-lap boosts drop off as the weight falls? The prediction: it keeps mini-turbos where they reliably work and drops them where they mostly fail. Given item 11, expect a decline unless its attempts become reliable first.
 2. Compare `curious-noholds` with `curious-EXPERIMENT`. If curiosity drifts just as well without hold lengths, remove hold lengths and go back to the simpler 9 actions.
 3. Try a few curiosity weights, since 0.3 was a guess.
 4. If mini-turbos stay but stall, measure a replay-based method such as IQN.

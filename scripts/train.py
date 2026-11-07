@@ -2,7 +2,7 @@
 
 Usage: python scripts/train.py [--resume] [--minutes N] [--no-viewer] [--emulators N]
     [--decisions-per-chunk N] [--sticky-chance P] [--hold-lengths]
-    [--curiosity-weight W] [--curiosity-fade-decisions N] [--exploration-weight W] [--advantage-blend L] [--start-from VERSION] [--checkpoint FILE] [--name NAME]
+    [--curiosity-weight W] [--curiosity-fade-decisions N] [--curiosity-learning-rate R] [--exploration-weight W] [--advantage-blend L] [--start-from VERSION] [--checkpoint FILE] [--name NAME]
 Run make_start_state.py first.
 """
 
@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--hold-lengths", action="store_true", help="the AI also picks how long to hold each half")
     parser.add_argument("--curiosity-weight", type=float, default=0.0, help="bonus for reaching new moments, 0 is off")
     parser.add_argument("--curiosity-fade-decisions", type=int, default=0, help="fade curiosity to 0 over this many decisions")
+    parser.add_argument("--curiosity-learning-rate", type=float, default=1e-4, help="slower keeps moments new for longer")
     parser.add_argument("--exploration-weight", type=float, default=0.01, help="how much to reward keeping options open")
     parser.add_argument("--advantage-blend", type=float, default=1.0, help="GAE's lambda: 1 is off, 0.95 is common")
     parser.add_argument("--start-from", default="", help="a saved version file to start from")
@@ -49,6 +50,7 @@ def main() -> None:
         hold_lengths=arguments.hold_lengths,
         curiosity_weight=arguments.curiosity_weight,
         curiosity_fade_decisions=arguments.curiosity_fade_decisions,
+        curiosity_learning_rate=arguments.curiosity_learning_rate,
         exploration_weight=arguments.exploration_weight,
         advantage_blend=arguments.advantage_blend,
         start_from=arguments.start_from,

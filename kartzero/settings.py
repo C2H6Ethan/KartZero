@@ -21,6 +21,7 @@ class Settings:
     hold_lengths: bool = False  # the AI also picks how long to hold the pedal and the steering, see holds.py
     curiosity_weight: float = 0.0  # a bonus for reaching moments it rarely sees, 0 is off, see curiosity.py
     curiosity_fade_decisions: int = 0  # lower the curiosity weight to 0 over this many decisions, 0 is never
+    curiosity_learning_rate: float = 1e-4  # how fast moments become familiar: slower keeps them new for longer
     start_from: str = ""  # a saved version to start from, instead of an untrained network
 
 

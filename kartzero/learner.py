@@ -164,7 +164,9 @@ class Trainer:
         self._race_end_progress: list[float] = []
         self._curiosity = None
         if settings.curiosity_weight:
-            self._curiosity = Curiosity(self._layout.inputs, self._device, settings.seed)
+            self._curiosity = Curiosity(
+                self._layout.inputs, self._device, settings.seed, settings.curiosity_learning_rate
+            )
             if saved and "curiosity" in saved:  # carry on with what it already finds familiar
                 self._curiosity.load_state(saved["curiosity"])
         self._last_end_progress = float("nan")  # no race has ended yet

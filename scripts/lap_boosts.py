@@ -1,6 +1,6 @@
 """Drive a run's saved versions on test laps (likeliest action, no exploration) and count their mini-turbos.
 
-Usage: python scripts/lap_boosts.py RUN [--every N]
+Usage: python scripts/lap_boosts.py RUN [--every N] [--between FIRST LAST]
 RUN is a run's folder name or the end of it, like "holds". Prints one line per tested version.
 """
 
@@ -20,12 +20,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("run")
     parser.add_argument("--every", type=int, default=1, help="test only every Nth version")
+    parser.add_argument("--between", type=float, nargs=2, metavar=("FIRST", "LAST"), help="only versions in this range of training minutes")
     arguments = parser.parse_args()
     run = find_run(arguments.run)
     with Game() as game:
         game.load_snapshot()
         race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
-        for version in run.versions.all()[:: arguments.every]:
+        versions = run.versions.all()
+        if arguments.between:
+            first, last = arguments.between
+            versions = [version for version in versions if first <= version.minutes <= last]
+        for version in versions[:: arguments.every]:
             network = load_driver(version.file)
             environment = race_for(network, race)
             observation = environment.reset()
