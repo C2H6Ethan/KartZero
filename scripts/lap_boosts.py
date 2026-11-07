@@ -2,6 +2,7 @@
 
 It drives each version's test lap again (likeliest action, no exploration), which is the same lap
 every time, saves the count with the run, and prints it with how much of the lap was spent drifting.
+A version that never got its test lap, because training stopped first, gets that lap saved too.
 `watch.py --list RUN` then shows the counts. Versions that already have a count are skipped.
 
 Usage: python scripts/lap_boosts.py RUN [--every N] [--between FIRST LAST] [--recount]
@@ -18,6 +19,7 @@ from kartzero.holds import race_for
 from kartzero.network import load_driver
 from kartzero.runs import find_run
 from kartzero.sensors import TrackSensors
+from kartzero.versions import LapResult
 
 
 def main() -> None:
@@ -59,7 +61,10 @@ def main() -> None:
                 drifting += count > 0
                 if step.finished or step.out_of_time:
                     break
-            store.save_mini_turbo_count(version.file, mini_turbos)
+            if version.file.name in laps:
+                store.save_mini_turbo_count(version.file, mini_turbos)
+            else:
+                store.save_test_lap(version.file, LapResult(step.finished, step.race_seconds, step.progress, mini_turbos))
             result = f"{step.race_seconds:7.2f}s" if step.finished else f"reached {step.progress:.1%}"
             print(
                 f"{version.file.name}  {result}  mini-turbos {mini_turbos}  highest count {highest_count}  "
