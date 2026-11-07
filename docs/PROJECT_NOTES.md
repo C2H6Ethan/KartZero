@@ -204,6 +204,8 @@ Night checks:
 - 20:32: seed 1 at 2.17M decisions: best 1:44.49 with 24 mini-turbos (at 2h56m), 14 to 28 on every lap since 2h39m. That beats the curiosity-0 brains' 1:44.55 with 0, so its mini-turbos now pay for themselves. Seed 2: 3 to 11 per lap, 1:53 to 1:58.
 - 21:22: seed 1 at 2.67M: **1:42.92 with 28 mini-turbos** (at 4h04m), laps 1:45 to 1:52 with 23 to 28 since 3h25m. Seed 2 at 1.44M: 8 to 18 per lap, best 1:48.22.
 - 22:13: seed 1 at 3.28M: **1:38.83 with 37 mini-turbos** (at 4h54m), **the fastest test lap of any AI so far**, 2.6 seconds better than the no-drift record of 1:41.40, and 2.35 seconds off the staff ghost (1:36.48). Also 1:40.41 with 33 and 1:41.35 with 35. Seed 2 at 2.05M: best 1:43.25 with 28, and 16 to 28 per lap.
+- 23:03: seed 1 at 3.92M: a dip (1:45 to 1:51 from 5h02m to 5h26m), then 1:41.14 with 35 and 1:40.45 with **40**, the most mini-turbos yet. Best still 1:38.83. Seed 2 at 2.67M: best 1:43.20 with 25.
+- 23:54: seed 1 at 4.54M: 33 to 44 mini-turbos on every lap since 5h34m, laps 1:40.39 to 1:46.94, best still 1:38.83. Seed 2 at 3.28M caught up: **1:38.86 with 36** (at 4h34m), and 1:39.79 with 27. Two seeds of the same recipe now drive about 1:39, so it isn't one lucky run.
 
 Next steps, in order:
 1. Carry out item 18.
