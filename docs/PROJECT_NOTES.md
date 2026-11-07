@@ -189,6 +189,17 @@ So the recipe worked for 2 seeds out of 3, at different times. Seed 1 was the lu
 4. Overnight: the winning setting, from the winner's best brain, on all 8 emulators, for 10 hours.
 5. Allowed to switch to something new overnight, but only if the run is clearly failing. That means, at least 2 hours in, both: no new best test lap in the last hour with the last-5 average no better than the starting brain's, **and** test-lap mini-turbos trending to about 0 (or practice reward falling for over an hour). In order of what to try: raise curiosity again from the best brain, then a different student speed, then a replay-based method (IQN). Every switch and its reason goes in these notes.
 
+**19. What happened to tonight's plan (about 19:40).** Step 2's two runs from seed 1's 1h13m brain (1:46.85, 14 mini-turbos):
+
+| Run | Mini-turbos per test lap over time | Laps at the end |
+|---|---|---|
+| curiosity 0 (stopped at 37 min) | 17, 19, then 11–14, 3–7, then 0 for the last five | 1:44.55 – 1:45.70 |
+| curiosity 0.05 (left to finish) | 10–14, then 2–5, then 0, 0, 4, 2 | 1:43.92 – 1:47.18 |
+
+Laps got **faster as mini-turbos went away** (1:46.85 with 14, to 1:44.55 with 0). So the way this AI does mini-turbos still costs more than it saves, and with speed as the only judge, dropping them is right for it. Even 0.05 didn't keep them. By rule 3 of item 18, 0.05 would have run overnight, but on this evidence it would just become a plain driver at about 1:44, below our old no-drift best of 1:41.40. **Changed with the owner's OK:** overnight instead resumes seed 1 (`curious-slow-new`) with curiosity 0.3, the only setting that has kept mini-turbos going, for 10 hours on 8 emulators (256 decisions per chunk, still 2,048 per update). Its checkpoint carries the curiosity network, and at resume `boost_newness` was 1.7 to 2.2, so curiosity still pulls towards boosting. Risks: it swings in waves, so judge the night by its best saved versions, not its last; and it may just plateau. Every version is kept with its test lap and mini-turbo count. Resuming needed `TrainingLog`, which lines up log columns when newer code adds some.
+
+**The night, split (from about 20:20).** At the owner's suggestion, the night is split between two runs instead of one, for two chances at a good brain at about the same total training: seed 1 (`curious-slow-new`, resumed at 2.05M decisions) and seed 2 (`curious-slow-new-seed2`, resumed at 0.74M decisions), 4 emulators each, 512 decisions per chunk, curiosity 0.3, slow student, hold lengths, GAE 0.95, 600 minutes. `best-curiosity0.05` finished first and ended with 0 or 1 mini-turbos on most laps, at 1:44 to 1:49.
+
 Next steps, in order:
 1. Carry out item 18.
 2. In the morning: test laps and mini-turbos across the overnight run, and compare with the staff ghost (1:36.48) and MarI/O Kart (1:27.83).
