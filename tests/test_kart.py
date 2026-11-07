@@ -10,6 +10,8 @@ from desmume.mkds.mkds import (
     driver_t,
     race_driver_status_t,
     race_status_t,
+    race_status_time_t,
+    race_time_t,
 )
 
 from kartzero.kart import FX32_ONE, Kart
@@ -140,3 +142,18 @@ def test_driver_and_kart_come_from_the_player_config():
 def test_is_loaded_needs_a_racer_pointer():
     assert make_kart().is_loaded()
     assert not make_kart({RACER_PTR_ADDR: 0}).is_loaded()
+
+
+def test_the_race_clock_reads_the_time_shown_on_screen():
+    clock = STATUS_ADDRESS + race_status_t.time.offset + race_status_time_t.lapTime.offset
+    values = {
+        clock + race_time_t.minutes.offset: 1,
+        clock + race_time_t.seconds.offset: 42,
+        clock + race_time_t.milliseconds.offset: 967,
+    }
+    assert make_kart(values).race_clock() == pytest.approx(102.967)
+
+
+def test_the_finish_time_is_the_official_total_in_seconds():
+    kart = make_kart({PLAYER_ADDRESS + race_driver_status_t.totalMilliseconds.offset: 102_967})
+    assert kart.finish_time() == pytest.approx(102.967)

@@ -111,6 +111,11 @@ class Game:
         """Show the game in a window. It then runs at normal speed, so this is only for watching."""
         self._window = GameWindow()
 
+    def label_window(self, text: str) -> None:
+        """Show a small line of text over the game in the window, if one is open."""
+        if self._window:
+            self._window.set_label(text)
+
     def window_closed(self) -> bool:
         return self._window is not None and self._window.closed
 

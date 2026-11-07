@@ -31,6 +31,29 @@ def advantages(points: list[float], guesses: list[float]) -> list[float]:
     return [p - g for p, g in zip(points, guesses)]
 
 
+def blended_advantages(
+    rewards: list[float], guesses: list[float], gamma: float, blend: float, points_after: float = 0.0
+) -> list[float]:
+    """For each decision: how much better than expected it went, blending near and far evidence (GAE).
+
+    The one-step surprise is reward + gamma * next guess - this guess. A blend of 0 uses only that,
+    which trusts the next guess. A blend of 1 adds up every later surprise, which gives exactly the
+    real points minus the guess, like `advantages`. In between, later surprises count less and less.
+    `points_after` works as in `future_points`.
+    """
+    if len(rewards) != len(guesses):
+        raise ValueError("rewards and guesses must have the same length")
+    result: list[float] = []
+    following = 0.0
+    next_guess = points_after
+    for reward, guess in zip(reversed(rewards), reversed(guesses)):
+        surprise = reward + gamma * next_guess - guess
+        following = surprise + gamma * blend * following
+        result.append(following)
+        next_guess = guess
+    return result[::-1]
+
+
 def limited_scores(ratios: torch.Tensor, advantages: torch.Tensor) -> torch.Tensor:
     """For each decision: the score training tries to raise, with PPO's speed limit applied.
 

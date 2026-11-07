@@ -10,6 +10,8 @@ from desmume.mkds.mkds import (
     driver_t,
     race_driver_status_t,
     race_status_t,
+    race_status_time_t,
+    race_time_t,
 )
 
 FX32_ONE = 4096  # the game stores decimals as whole numbers: 4096 means 1.0
@@ -19,6 +21,7 @@ OFF_ROAD_FLOOR_TYPES = {3}  # measured on Figure-8: other tracks may add more
 IN_THE_AIR = -1
 PLAYER_CONFIG_OFFSET = 0x68
 PLAYER_ENTRY_OFFSET = race_status_t.driverStatus.offset  # our kart is the first entry
+RACE_CLOCK_OFFSET = race_status_t.time.offset + race_status_time_t.lapTime.offset
 
 Vector3 = tuple[float, float, float]
 
@@ -97,6 +100,19 @@ class Kart:
     def has_finished(self) -> bool:
         """Whether the race is over. The game then drives the kart itself, so a run must end here."""
         return self.race_progress() >= FINISH_PROGRESS
+
+    def race_clock(self) -> float:
+        """The race time shown on screen, in seconds. It starts in the countdown, about 2.4 s
+        before the kart can move, and keeps running after the finish."""
+        clock = self._memory.unsigned.read_long(RACE_STATUS_PTR_ADDR) + RACE_CLOCK_OFFSET
+        minutes = self._memory.unsigned.read_byte(clock + race_time_t.minutes.offset)
+        seconds = self._memory.unsigned.read_byte(clock + race_time_t.seconds.offset)
+        milliseconds = self._memory.unsigned.read_short(clock + race_time_t.milliseconds.offset)
+        return minutes * 60 + seconds + milliseconds / 1000
+
+    def finish_time(self) -> float:
+        """The official race time in seconds, as the game records it at the line. 0 until then."""
+        return self._memory.unsigned.read_long(self._status_field(race_driver_status_t.totalMilliseconds.offset)) / 1000
 
     def lap_progress(self) -> float:
         """How far around the current lap. Jumps between 0 and 1 at the line, so don't use it for rewards."""

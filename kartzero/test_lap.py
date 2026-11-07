@@ -7,9 +7,11 @@ from typing import Any, Optional, Protocol
 import numpy as np
 import torch
 
-from kartzero.environment import ACTIONS, DECISIONS_PER_SECOND, OBSERVATION_SIZE, RaceEnvironment, Step
+from kartzero.environment import RaceEnvironment, Step
+from kartzero.holds import make_environment, sizes
 from kartzero.game import Game
 from kartzero.network import DriverNetwork
+from kartzero.settings import Settings
 from kartzero.sensors import TrackSensors
 from kartzero.versions import LapResult, VersionStore
 
@@ -29,17 +31,21 @@ def drive_test_lap(network: Any, environment: Environment) -> LapResult:
         step = environment.step(int(odds.probs.argmax()))
         observation = step.observation
         if step.finished or step.out_of_time:
-            return LapResult(step.finished, step.decisions / DECISIONS_PER_SECOND, step.progress)
+            return LapResult(step.finished, step.race_seconds, step.progress)
 
 
-def run_lap_tester(versions_to_test: "Queue[Optional[Path]]", run_folder: Path) -> None:
+def run_lap_tester(
+    versions_to_test: "Queue[Optional[Path]]", run_folder: Path, settings: Optional[Settings] = None
+) -> None:
     """Test every version that hasn't been tested yet, then wait for new ones. Runs in its own process."""
     torch.set_num_threads(1)
     store = VersionStore(run_folder)
-    network = DriverNetwork(OBSERVATION_SIZE, len(ACTIONS))
+    settings = settings or Settings()
+    inputs, actions, _ = sizes(settings)
+    network = DriverNetwork(inputs, actions)
     with Game() as game:
         game.load_snapshot()
-        environment = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()))
+        environment = make_environment(RaceEnvironment(game, TrackSensors(game.track.collision_triangles())), settings)
 
         def test(file: Path) -> None:
             network.load_state_dict(torch.load(file, map_location="cpu")["network"])

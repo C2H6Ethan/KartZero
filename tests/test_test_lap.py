@@ -43,6 +43,7 @@ class FakeEnvironment:
             out_of_time=ended and not self.finishes,
             progress=1.0 if ended and self.finishes else 0.5,
             decisions=len(self.chosen),
+            race_seconds=len(self.chosen) / 15 + 2.4,  # the game's clock starts in the countdown
         )
 
 
@@ -58,9 +59,9 @@ def test_it_starts_a_new_race():
     assert environment.resets == 1
 
 
-def test_a_finished_lap_reports_its_time():
+def test_a_finished_lap_reports_the_games_time():
     result = drive_test_lap(FakeNetwork(favourite=0), FakeEnvironment(decisions_to_end=1500))
-    assert result == LapResult(True, 100.0, 1.0)
+    assert result == LapResult(True, pytest.approx(102.4), 1.0)
 
 
 def test_a_lap_that_runs_out_of_time_reports_how_far_it_got():

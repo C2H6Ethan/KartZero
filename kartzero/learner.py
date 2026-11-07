@@ -7,7 +7,7 @@ import multiprocessing as mp
 import os
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Any, Optional
@@ -15,11 +15,21 @@ from typing import Any, Optional
 import numpy as np
 import torch
 
-from kartzero.environment import ACTIONS, DECISIONS_PER_SECOND, OBSERVATION_SIZE, Step
+from kartzero.environment import (
+    ACTIONS,
+    DECISIONS_PER_SECOND,
+    STEERING_CHOICES,
+    Step,
+)
+from kartzero.curiosity import Curiosity
 from kartzero.game import ROOT
+from kartzero.holds import sizes
 from kartzero.network import VALUE_SCALE, DriverNetwork
+from kartzero.observation import MINI_TURBO_SCALE
+from kartzero.self_imitation import ExperienceBuffer, self_imitation_loss
+from kartzero.settings import Settings
 from kartzero.test_lap import run_lap_tester
-from kartzero.training import advantages, future_points, guess_error, limited_scores
+from kartzero.training import blended_advantages, future_points, guess_error, limited_scores
 from kartzero.versions import VersionStore, next_version_after
 from kartzero.worker import run_worker
 
@@ -29,21 +39,41 @@ EPSILON = 1e-8
 SAVE_EVERY_ROUNDS = 5
 PRINT_EVERY_ROUNDS = 5
 LAP_TESTER_STOP_SECONDS = 30
+MINI_TURBO_INPUT = 3  # where the mini-turbo count sits in the observation
 
 
-@dataclass
-class Settings:
-    """Everything that shapes a run. Saved with its results, so runs can be reproduced."""
+def policy_score(ratios: torch.Tensor, advantages: torch.Tensor, used: torch.Tensor) -> torch.Tensor:
+    """The average PPO score over the decisions in `used`, with advantages compared within them.
 
-    seed: int = 1
-    emulators: int = 8
-    decisions_per_chunk: int = 256
-    gamma: float = 0.99
-    learning_rate: float = 3e-4
-    learning_passes: int = 4
-    batch_size: int = 512
-    guess_weight: float = 0.5
-    exploration_weight: float = 0.01
+    Decisions the sticky dice overrode are left out: the outcome would have been the same whatever
+    was picked, so on average they push no button, and leaving them out removes their noise.
+    """
+    if int(used.sum()) < 2:  # too few to compare advantages
+        return (ratios * 0).sum()
+    chosen = advantages[used]
+    normalised = (chosen - chosen.mean()) / (chosen.std() + EPSILON)
+    return limited_scores(ratios[used], normalised).mean()
+
+
+def used_log_odds(
+    odds: torch.distributions.Categorical,
+    actions: torch.Tensor,
+    pedal_used: torch.Tensor,
+    steering_used: torch.Tensor,
+    steering_choices: int = STEERING_CHOICES,
+) -> torch.Tensor:
+    """The log odds of the part of each pick that was really used.
+
+    Both halves used: the whole action. Only one: that half's odds, adding up over the other half.
+    Neither: the whole action, though such picks are left out of the update anyway.
+    """
+    whole = odds.log_prob(actions)
+    split = odds.logits.view(len(actions), -1, steering_choices)  # Categorical keeps these normalised
+    pedal = torch.logsumexp(split, dim=2).gather(1, (actions // steering_choices)[:, None]).squeeze(1)
+    steering = torch.logsumexp(split, dim=1).gather(1, (actions % steering_choices)[:, None]).squeeze(1)
+    only_pedal = pedal_used & ~steering_used
+    only_steering = steering_used & ~pedal_used
+    return torch.where(only_pedal, pedal, torch.where(only_steering, steering, whole))
 
 
 def chunk_points(
@@ -64,6 +94,25 @@ def chunk_points(
     return points
 
 
+def chunk_advantages(
+    rewards: list[float],
+    guesses: list[float],
+    race_ends: list[bool],
+    points_after_each: list[float],
+    gamma: float,
+    blend: float,
+) -> list[float]:
+    """Blended advantages for one emulator's chunk, worked out race by race like `chunk_points`."""
+    result: list[float] = []
+    start = 0
+    for index, ended in enumerate(race_ends):
+        if ended or index == len(race_ends) - 1:
+            race = slice(start, index + 1)
+            result += blended_advantages(rewards[race], guesses[race], gamma, blend, points_after_each[index])
+            start = index + 1
+    return result
+
+
 class Recording:
     """One emulator's chunk of driving."""
 
@@ -75,20 +124,35 @@ class Recording:
         self.rewards: list[float] = []
         self.race_ends: list[bool] = []
         self.points_after: list[float] = []
+        self.picks_ignored: list[bool] = []
+        self.held_actions: list[int] = []
+        self.pedals_used: list[bool] = []
+        self.steerings_used: list[bool] = []
+        self.boosts = 0
 
 
 class Trainer:
     """Drives 8 emulators with a frozen network, and learns on the graphics card between chunks."""
 
-    def __init__(self, settings: Settings, run_folder: Path, saved: Optional[dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        run_folder: Path,
+        saved: Optional[dict[str, Any]] = None,
+        checkpoint: Path = LATEST_CHECKPOINT,
+    ) -> None:
         torch.manual_seed(settings.seed)
         torch.set_num_threads(1)
         self._settings = settings
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._driver = DriverNetwork(OBSERVATION_SIZE, len(ACTIONS))
-        self._learner = DriverNetwork(OBSERVATION_SIZE, len(ACTIONS)).to(self._device)
+        self._inputs, self._actions, self._half_choices = sizes(settings)
+        self._driver = DriverNetwork(self._inputs, self._actions)
+        if settings.start_from and not saved:
+            self._driver.load_state_dict(torch.load(settings.start_from, map_location="cpu")["network"])
+        self._learner = DriverNetwork(self._inputs, self._actions).to(self._device)
         self._optimizer = torch.optim.Adam(self._learner.parameters(), lr=settings.learning_rate)
         self._run_folder = run_folder
+        self._checkpoint = checkpoint
         self._versions = VersionStore(run_folder)
 
         self._total_decisions = 0
@@ -104,6 +168,9 @@ class Trainer:
             self.earlier_seconds = saved["seconds"]
         self._learner.load_state_dict(self._driver.state_dict())
         self._race_end_progress: list[float] = []
+        self._archive_races = 0
+        self._curiosity = Curiosity(self._inputs, self._device, settings.seed) if settings.curiosity_weight else None
+        self._experience = ExperienceBuffer(settings.self_imitation_buffer, self._inputs, settings.seed)
         self._last_end_progress = float("nan")  # no race has ended yet
 
         run_folder.mkdir(parents=True, exist_ok=True)
@@ -113,9 +180,15 @@ class Trainer:
 
         self._connections: list[Any] = []  # the connection type differs between operating systems
         self._workers: list[BaseProcess] = []
-        for _ in range(settings.emulators):
+        for index in range(settings.emulators):
             ours, theirs = mp.Pipe()
-            worker = mp.get_context("spawn").Process(target=run_worker, args=(theirs,), daemon=True)
+            # A different sticky seed per emulator, so they don't all repeat at the same moments.
+            seed = settings.seed * 1000 + index
+            worker = mp.get_context("spawn").Process(
+                target=run_worker,
+                args=(theirs, settings, seed, run_folder / "archive" / f"emulator{index}"),
+                daemon=True,
+            )
             worker.start()
             self._connections.append(ours)
             self._workers.append(worker)
@@ -134,8 +207,8 @@ class Trainer:
 
     def save(self, seconds: float) -> None:
         """Save everything needed to carry on, replacing the last save."""
-        LATEST_CHECKPOINT.parent.mkdir(exist_ok=True)
-        temporary = LATEST_CHECKPOINT.with_suffix(".tmp")
+        self._checkpoint.parent.mkdir(exist_ok=True)
+        temporary = self._checkpoint.with_suffix(".tmp")
         torch.save(
             {
                 "network": self._driver.state_dict(),
@@ -148,7 +221,7 @@ class Trainer:
             },
             temporary,
         )
-        os.replace(temporary, LATEST_CHECKPOINT)  # so the viewer never loads a half-written file
+        os.replace(temporary, self._checkpoint)  # so the viewer never loads a half-written file
 
     def save_version(self, seconds: float) -> Path:
         return self._versions.save(
@@ -163,13 +236,16 @@ class Trainer:
         count = self._settings.emulators
         recordings = [Recording() for _ in range(count)]
         with torch.no_grad():
-            for _ in range(self._settings.decisions_per_chunk):
+            for decision in range(self._settings.decisions_per_chunk):
+                is_last_decision = decision == self._settings.decisions_per_chunk - 1
                 odds, guesses = self._driver(torch.as_tensor(self._observations))
                 actions = odds.sample()
-                log_odds = odds.log_prob(actions)
                 for connection, action in zip(self._connections, actions.tolist()):
                     connection.send(action)
                 results: list[tuple[Step, np.ndarray]] = [connection.recv() for connection in self._connections]
+                pedals_used = torch.as_tensor([not step.pedal_ignored for step, _ in results])
+                steerings_used = torch.as_tensor([not step.steering_ignored for step, _ in results])
+                log_odds = used_log_odds(odds, actions, pedals_used, steerings_used, self._half_choices)
 
                 for index, (step, _) in enumerate(results):
                     recording = recordings[index]
@@ -179,24 +255,33 @@ class Trainer:
                     recording.guesses.append(float(guesses[index]))
                     recording.rewards.append(step.reward)
                     recording.race_ends.append(step.finished or step.out_of_time)
-                    recording.points_after.append(self._points_after(step))
+                    recording.points_after.append(self._points_after(step, is_last_decision))
+                    recording.picks_ignored.append(step.pick_ignored)
+                    recording.held_actions.append(step.held_action)
+                    recording.pedals_used.append(not step.pedal_ignored)
+                    recording.steerings_used.append(not step.steering_ignored)
+                    recording.boosts += step.boost_started
                     self._note_race_end(step)
                 self._observations = np.stack([next_observation for _, next_observation in results])
                 self._total_decisions += count
         return recordings
 
-    def _points_after(self, step: Step) -> float:
-        if step.finished:
+    def _points_after(self, step: Step, is_last_decision: bool) -> float:
+        """What follows this decision. Only a stop mid-race needs the network's guess, so only then ask it."""
+        if step.finished or not (step.out_of_time or is_last_decision):
             return 0.0
         _, guess = self._driver(torch.as_tensor(step.observation[None]))
         return float(guess)
 
     def _note_race_end(self, step: Step) -> None:
+        if step.from_archive:  # it didn't start at the start line, so its time and progress mean nothing
+            self._archive_races += step.finished or step.out_of_time
+            return
         if step.finished or step.out_of_time:
             self._race_end_progress.append(step.progress)
         if step.finished:
             self._finishes += 1
-            seconds = step.decisions / DECISIONS_PER_SECOND
+            seconds = step.race_seconds
             if self._best_seconds is None or seconds < self._best_seconds:
                 self._best_seconds = seconds
 
@@ -204,16 +289,28 @@ class Trainer:
         gamma = self._settings.gamma
         points: list[float] = []
         how_it_went: list[float] = []
-        for recording in recordings:
-            real = chunk_points(recording.rewards, recording.race_ends, recording.points_after, gamma)
-            points += real
-            how_it_went += advantages(real, recording.guesses)
+        bonuses = self._curiosity_bonuses(recordings)
+        for recording, bonus in zip(recordings, bonuses):
+            chunk = chunk_advantages(
+                [reward + extra for reward, extra in zip(recording.rewards, bonus)],
+                recording.guesses,
+                recording.race_ends,
+                recording.points_after,
+                gamma,
+                self._settings.advantage_blend,
+            )
+            how_it_went += chunk
+            # What the guess should have been. With a blend of 1 these are exactly the real points.
+            points += [advantage + guess for advantage, guess in zip(chunk, recording.guesses)]
 
         observations = self._tensor(np.concatenate([r.observations for r in recordings]))
         actions = torch.as_tensor([a for r in recordings for a in r.actions], device=self._device)
         old_log_odds = self._tensor([o for r in recordings for o in r.old_log_odds])
         points_tensor = self._tensor(points)
         advantage_tensor = self._tensor(how_it_went)
+        picks_used = ~torch.as_tensor([i for r in recordings for i in r.picks_ignored], device=self._device)
+        pedals_used = torch.as_tensor([u for r in recordings for u in r.pedals_used], device=self._device)
+        steerings_used = torch.as_tensor([u for r in recordings for u in r.steerings_used], device=self._device)
 
         last_guess_error, last_ratio_gap = 0.0, 0.0
         batch_size = self._settings.batch_size
@@ -222,11 +319,13 @@ class Trainer:
             for start in range(0, len(actions), batch_size):
                 batch = order[start : start + batch_size]
                 odds, guesses = self._learner(observations[batch])
-                ratios = (odds.log_prob(actions[batch]) - old_log_odds[batch]).exp()
+                new_log_odds = used_log_odds(
+                    odds, actions[batch], pedals_used[batch], steerings_used[batch], self._half_choices
+                )
+                ratios = (new_log_odds - old_log_odds[batch]).exp()
                 # Comparing advantages within a batch keeps the size of the push steady.
-                batch_advantages = advantage_tensor[batch]
-                batch_advantages = (batch_advantages - batch_advantages.mean()) / (batch_advantages.std() + EPSILON)
-                scores = limited_scores(ratios, batch_advantages).mean()
+                scores = policy_score(ratios, advantage_tensor[batch], picks_used[batch])
+                # The guess learns from every decision, because those points really happened.
                 error = guess_error(guesses / VALUE_SCALE, points_tensor[batch] / VALUE_SCALE)
                 exploration = odds.entropy().mean()
                 loss = (
@@ -241,54 +340,129 @@ class Trainer:
                 last_guess_error = error.item()
                 last_ratio_gap = (ratios - 1).abs().mean().item()
 
+        imitated = self._self_imitate(recordings) if self._settings.self_imitation_weight > 0 else 0.0
         self._driver.load_state_dict({key: value.cpu() for key, value in self._learner.state_dict().items()})
         ended = self._race_end_progress
         self._race_end_progress = []
         if ended:
             self._last_end_progress = float(np.mean(ended))
+        practice_minutes = len(actions) / DECISIONS_PER_SECOND / 60
         return {
             "decisions": float(self._total_decisions),
+            # Includes any boost from a start-line rocket start.
+            "boosts_per_minute": sum(r.boosts for r in recordings) / practice_minutes,
+            "picks_ignored": 1 - float(picks_used.float().mean()),
+            # For watching only, never for the reward: how close practice gets to a mini-turbo.
+            "share_at_count_2": float((observations[:, MINI_TURBO_INPUT] >= 2 / MINI_TURBO_SCALE).float().mean()),
+            "share_at_count_3": float((observations[:, MINI_TURBO_INPUT] >= 3 / MINI_TURBO_SCALE).float().mean()),
             "average_reward": float(np.mean([reward for r in recordings for reward in r.rewards])),
             "races_ended": float(len(ended)),
+            "archive_races": float(self._archive_races),
             "average_end_progress": float(np.mean(ended)) if ended else float("nan"),
             "finishes": float(self._finishes),
             "best_seconds": self._best_seconds if self._best_seconds is not None else float("nan"),
             "guess_error": last_guess_error,
+            "share_imitated": imitated,
+            "curiosity_spread": float(np.mean([np.abs(b).mean() for b in bonuses])),
             "ratio_gap": last_ratio_gap,
         }
+
+    def _curiosity_bonuses(self, recordings: list[Recording]) -> list[np.ndarray]:
+        """Each decision's bonus for the newness of the moment it led to. All zeros when curiosity is off.
+
+        A decision that ended a race gets none, because the moment after it is the next race's start.
+        """
+        if self._curiosity is None:
+            return [np.zeros(len(r.rewards)) for r in recordings]
+        following = [
+            np.concatenate([np.array(r.observations[1:]), self._observations[index][None]])
+            for index, r in enumerate(recordings)
+        ]
+        all_following = self._tensor(np.concatenate(following))
+        bonus = self._curiosity.bonus(all_following, self._settings.curiosity_weight).cpu().numpy()
+        self._curiosity.learn(self._tensor(np.concatenate([np.array(r.observations) for r in recordings])))
+        result: list[np.ndarray] = []
+        start = 0
+        for recording in recordings:
+            part = bonus[start : start + len(recording.rewards)].copy()
+            part[np.array(recording.race_ends)] = 0.0
+            result.append(part)
+            start += len(recording.rewards)
+        return result
+
+    def _self_imitate(self, recordings: list[Recording]) -> float:
+        """Store this chunk with its real points, then learn from past decisions that beat the guess.
+
+        Returns the share of sampled decisions that beat the guess.
+        """
+        for recording in recordings:
+            real_points = chunk_points(
+                recording.rewards, recording.race_ends, recording.points_after, self._settings.gamma
+            )
+            self._experience.add(np.array(recording.observations), recording.held_actions, real_points)
+        size = self._settings.batch_size
+        better_total = 0
+        for _ in range(self._settings.self_imitation_batches):
+            observations, actions, points = self._experience.sample(size)
+            loss, better = self_imitation_loss(
+                self._learner,
+                self._tensor(observations),
+                torch.as_tensor(actions, device=self._device),
+                self._tensor(points),
+            )
+            better_total += better
+            if better:
+                self._optimizer.zero_grad()
+                (self._settings.self_imitation_weight * loss).backward()
+                torch.nn.utils.clip_grad_norm_(self._learner.parameters(), MAX_GRADIENT)
+                self._optimizer.step()
+        return better_total / (size * self._settings.self_imitation_batches)
 
     def _tensor(self, values: object) -> torch.Tensor:
         return torch.as_tensor(np.array(values), dtype=torch.float32, device=self._device)
 
 
 def _code_version() -> str:
-    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT)
-    return result.stdout.strip()
+    """The commit, marked if tracked files had changes that weren't committed yet."""
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT)
+    changes = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, cwd=ROOT
+    )
+    return commit.stdout.strip() + ("+uncommitted" if changes.stdout.strip() else "")
 
 
-def _load_saved() -> dict[str, Any]:
-    if not LATEST_CHECKPOINT.exists():
-        raise FileNotFoundError(f"nothing to resume: {LATEST_CHECKPOINT} doesn't exist")
-    saved: dict[str, Any] = torch.load(LATEST_CHECKPOINT, map_location="cpu")
+def _load_saved(checkpoint: Path) -> dict[str, Any]:
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"nothing to resume: {checkpoint} doesn't exist")
+    saved: dict[str, Any] = torch.load(checkpoint, map_location="cpu")
     if "optimizer" not in saved:
         raise ValueError("this save is from before resuming was added, so it can't be resumed")
     return saved
 
 
 def run_training(
-    settings: Settings, minutes: Optional[float], viewer: Optional[BaseProcess], resume: bool = False
+    settings: Settings,
+    minutes: Optional[float],
+    viewer: Optional[BaseProcess],
+    resume: bool = False,
+    checkpoint: Path = LATEST_CHECKPOINT,
+    name: str = "",
 ) -> None:
-    """Train until the time is up or the viewer window is closed. `minutes` counts from this start."""
-    saved = _load_saved() if resume else None
-    run_folder = ROOT / "runs" / (saved["run_folder"] if saved else time.strftime("%Y%m%d-%H%M%S"))
-    trainer = Trainer(settings, run_folder, saved)
+    """Train until the time is up or the viewer window is closed. `minutes` counts from this start.
+
+    `name` is added to a new run's folder, to tell apart runs started together.
+    """
+    saved = _load_saved(checkpoint) if resume else None
+    new_folder = time.strftime("%Y%m%d-%H%M%S") + (f"-{name}" if name else "")
+    run_folder = ROOT / "runs" / (saved["run_folder"] if saved else new_folder)
+    trainer = Trainer(settings, run_folder, saved, checkpoint)
     if not saved:
         trainer.save_version(0.0)  # the AI before it has learned anything
     trainer.save(trainer.earlier_seconds)
     next_version = next_version_after(trainer.total_decisions)
     context = mp.get_context("spawn")
     versions_to_test: "mp.Queue[Optional[Path]]" = context.Queue()
-    lap_tester = context.Process(target=run_lap_tester, args=(versions_to_test, run_folder), daemon=True)
+    lap_tester = context.Process(target=run_lap_tester, args=(versions_to_test, run_folder, settings), daemon=True)
     lap_tester.start()
     start = time.perf_counter()
     round_number = 0
@@ -320,7 +494,8 @@ def run_training(
                     f"{total_seconds / 60:6.1f} min  {stats['decisions'] / 1e6:6.3f}M decisions  {speed:5.2f}M/hour  "
                     f"reward {stats['average_reward']:6.2f}  "
                     f"race end progress {'  -  ' if math.isnan(end_progress) else format(end_progress, '6.3f')}  "
-                    f"finishes {int(stats['finishes'])}  best {stats['best_seconds']:6.1f}s  guess error {stats['guess_error']:7.3f}",
+                    f"finishes {int(stats['finishes'])}  best {stats['best_seconds']:6.1f}s  "
+                    f"boosts/min {stats['boosts_per_minute']:5.2f}  guess error {stats['guess_error']:7.3f}",
                     flush=True,
                 )
             if viewer is not None and not viewer.is_alive():

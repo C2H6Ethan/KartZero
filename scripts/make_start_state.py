@@ -26,6 +26,23 @@ DRY_BONES = 8
 ROB_BLS = 34
 
 
+def save_just_before_the_start(game: Game) -> None:
+    """Save one frame before the kart can move, so a restart doesn't replay the countdown.
+
+    The accelerator is held through the countdown, the same way a race used to start.
+    """
+    game.save_snapshot()
+    game.hold(Button.A)
+    frames_to_start = 0
+    while game.kart.speed() <= 0:
+        game.advance()
+        frames_to_start += 1
+    game.load_snapshot()
+    game.hold(Button.A)
+    game.advance(frames_to_start - 1)
+    game.save_snapshot()
+
+
 def main() -> None:
     delete_emulator_save()
     with Game() as game:
@@ -40,7 +57,7 @@ def main() -> None:
             raise RuntimeError("no kart in memory: the menu script did not reach a race")
         if (game.kart.driver_id(), game.kart.kart_id()) != (DRY_BONES, ROB_BLS):
             raise RuntimeError(f"expected Dry Bones in ROB-BLS, memory says {game.kart.driver_id()}, {game.kart.kart_id()}")
-        game.save_snapshot()
+        save_just_before_the_start(game)
         game.screenshot(SNAPSHOT.with_suffix(".png"))
         print(f"saved {SNAPSHOT.name}: driver {game.kart.driver_id()}, kart {game.kart.kart_id()}")
 

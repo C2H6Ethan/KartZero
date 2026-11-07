@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from kartzero.training import advantages, future_points, guess_error, limited_scores
+from kartzero.training import advantages, blended_advantages, future_points, guess_error, limited_scores
 
 
 def test_a_perfect_guess_has_no_error():
@@ -129,3 +129,37 @@ def test_the_input_list_is_left_unchanged():
 
 def test_an_empty_recording_gives_an_empty_answer():
     assert future_points([], gamma=0.5) == []
+
+
+# Blended advantages (GAE). Worked example: rewards [1, 1], guesses [2, 1], gamma 0.5, 4 points after.
+# One-step surprises: last 1 + 0.5 * 4 - 1 = 2, first 1 + 0.5 * 1 - 2 = -0.5.
+
+
+def test_a_blend_of_zero_only_trusts_the_next_guess():
+    assert blended_advantages([1, 1], [2, 1], gamma=0.5, blend=0.0, points_after=4) == pytest.approx([-0.5, 2])
+
+
+def test_a_blend_of_one_is_the_real_points_minus_the_guess():
+    rewards, guesses = [1, 1], [2, 1]
+    real = advantages(future_points(rewards, 0.5, points_after=4), guesses)
+    assert blended_advantages(rewards, guesses, gamma=0.5, blend=1.0, points_after=4) == pytest.approx(real)
+
+
+def test_a_blend_in_between_mixes_the_two():
+    # First: -0.5 + 0.5 * 0.5 * 2 = 0
+    assert blended_advantages([1, 1], [2, 1], gamma=0.5, blend=0.5, points_after=4) == pytest.approx([0, 2])
+
+
+def test_a_blend_of_one_matches_the_real_points_on_a_longer_race():
+    rewards, guesses = [1.0, -0.25, 3.0, 0.5, 2.0], [5.0, 4.0, 3.5, 1.0, 0.0]
+    real = advantages(future_points(rewards, 0.9), guesses)
+    assert blended_advantages(rewards, guesses, gamma=0.9, blend=1.0) == pytest.approx(real)
+
+
+def test_blending_needs_one_guess_per_reward():
+    with pytest.raises(ValueError):
+        blended_advantages([1.0, 2.0], [1.0], gamma=0.5, blend=0.5)
+
+
+def test_blending_an_empty_recording_gives_an_empty_answer():
+    assert blended_advantages([], [], gamma=0.5, blend=0.5) == []

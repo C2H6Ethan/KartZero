@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import torch
-
 SMALLEST_GAP = 25_000  # about a minute of training
 GROWTH_PER_VERSION = 1.03
 INDEX_FILE = "versions.csv"
@@ -90,6 +88,8 @@ class VersionStore:
 
     def save(self, network_state: dict[str, Any], decisions: int, minutes: float, end_progress: float) -> Path:
         """Save a version, and return its file."""
+        import torch  # only saving needs it, and it's slow to load, which would slow down listing versions
+
         self._folder.mkdir(parents=True, exist_ok=True)
         name = f"{training_time(minutes).replace(' ', '')}_{decisions:012d}_decisions.pt"
         temporary = self._folder / (name + ".tmp")

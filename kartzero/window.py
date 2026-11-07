@@ -21,6 +21,8 @@ class GameWindow:
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._picture = tk.Label(self._root, background="black", borderwidth=0)
         self._picture.place(relx=0.5, rely=0.5, anchor="center")
+        # Made after the picture, so it sits on top of it.
+        self._label = tk.Label(self._root, text="", font=("Segoe UI", 11), foreground="white", background="black")
         self._photo: ImageTk.PhotoImage | None = None  # tkinter needs this kept alive while it's shown
 
     @property
@@ -38,6 +40,16 @@ class GameWindow:
         size = (max(1, round(DS_WIDTH * scale)), max(1, round(DS_HEIGHT * scale)))
         self._photo = ImageTk.PhotoImage(image.resize(size, Image.Resampling.NEAREST))
         self._picture.configure(image=self._photo)
+
+    def set_label(self, text: str) -> None:
+        """Show a small line of text in the top-left corner, or hide it with an empty text."""
+        if self._closed:
+            return
+        self._label.configure(text=text)
+        if text:
+            self._label.place(x=6, y=6, anchor="nw")
+        else:
+            self._label.place_forget()
 
     def close(self) -> None:
         if not self._closed:
