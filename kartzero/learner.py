@@ -34,6 +34,7 @@ SAVE_EVERY_ROUNDS = 5
 PRINT_EVERY_ROUNDS = 5
 LAP_TESTER_STOP_SECONDS = 30
 MINI_TURBO_INPUT = 3  # where the mini-turbo count sits in the observation, for the log
+BOOST_INPUT = 4  # and the boost time left
 
 
 def policy_score(ratios: torch.Tensor, advantages: torch.Tensor, used: torch.Tensor) -> torch.Tensor:
@@ -379,18 +380,27 @@ class Trainer:
         bonuses = np.split(bonus, np.cumsum([len(recording.rewards) for recording in recordings])[:-1])
         for recording, recording_bonus in zip(recordings, bonuses):
             recording_bonus[np.array(recording.race_ends)] = 0.0
-        # How new drift moments (count 2 or more) look next to the average moment. Near 1 means
-        # drifting has become familiar, so the bonus is no longer what keeps the AI drifting.
+        # For watching only, never for the reward: how new drift moments (count 2 or more) and boost
+        # moments look next to the average moment. Below 1 means more familiar than average, so the
+        # bonus is then slightly against them, and it's no longer what keeps the AI doing them.
         drifting = moments[:, MINI_TURBO_INPUT] >= 2 / MINI_TURBO_SCALE
-        drift_newness = float(novelty[drifting].mean() / novelty.mean()) if drifting.any() else float("nan")
+        boosting = moments[:, BOOST_INPUT] > 0
         return bonuses, {
             "curiosity_weight": weight,
             "curiosity_spread": float(np.mean(np.abs(bonus))),
-            "drift_newness": drift_newness,
+            "drift_newness": _newness_of(novelty, drifting),
+            "boost_newness": _newness_of(novelty, boosting),
         }
 
     def _tensor(self, values: object) -> torch.Tensor:
         return torch.as_tensor(np.array(values), dtype=torch.float32, device=self._device)
+
+
+def _newness_of(novelty: torch.Tensor, chosen: torch.Tensor) -> float:
+    """The average newness of the chosen moments, divided by the average of all. NaN if none were chosen."""
+    if not chosen.any():
+        return float("nan")
+    return float(novelty[chosen].mean() / novelty.mean())
 
 
 def _share_at_count(observations: torch.Tensor, count: int) -> float:

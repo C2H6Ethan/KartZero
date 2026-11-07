@@ -136,11 +136,6 @@ So hold lengths stay.
 
 **13. Making the curious phase last longer (running).** Item 11 suggests the AI quits before its mini-turbos get reliable, because drifting stops being new after about 15 minutes. Curiosity is a bonus for any unusual moment (a wall it normally avoids, off-road, an odd crash angle, or a drift), and slowing the student network keeps all of them new for longer, the distracting ones included. `--curiosity-learning-rate` sets how fast the student learns (default 0.0001). `curious-slow` uses 0.000025, 4 times slower (a guess), with the weight at a constant 0.3, from the 45-minute peak brain. The idea, suggested on 7 November: build a starting point that boosts a lot, and only then fade.
 
-**Running now (three runs, 4 emulators each, sharing the 8 cores):**
-- `curious-fade`: from the 45-minute peak brain, curiosity 0.3 fading to 0 over 600k decisions, then about an hour at 0. It did better than predicted early on. At 17 minutes (0.21M decisions, weight down to 0.20) it had about 54 practice boosts, count 2+ rising from 2.8% to 3.9%, and `drift_newness` about 1.2 to 1.4. So drifting is fairly familiar, yet it keeps doing it so far.
-- `curious-slow`: the slower student (item 13), from the 45-minute peak brain.
-- `curious-slow-new`: the same recipe as `curious-slow`, but from an untrained brain. The question: does a fresh start under the slower student end up higher than starting from the peak? The peak brain grew up with the fast student, while a fresh one would be shaped by the slower student from the first minute.
-
 **14. Test-lap boosts so far (measured about 16:40).** Every saved version, counted with `lap_boosts.py`. Both peak-start runs begin from the same brain, which had 2 boosts, so that one isn't counted for either.
 
 | Run | Versions after the start | Versions with a boost | Most in one lap |
@@ -167,11 +162,17 @@ So hold lengths stay.
 
 Practice: 317 boosts in the first 53 minutes, 132 of them in minutes 48 to 53. It drifts much more than the peak-start runs did, and it learned to drive at about the same pace as the normal student (item 13). Laps are still slower than the 1:43 of plain driving, so its mini-turbos don't pay for its drifting yet.
 
+**16. How the two peak-start runs ended (stopped about 17:35).**
+- `curious-fade` (87 min, 0.88M decisions): once the weight reached 0, drifting vanished. Its newest four brains drift 0 to 3% of the time with **0 mini-turbos**, laps 1:44 to 1:47, best test lap 1:43.55. The forgetting prediction was right: started from a brain whose mini-turbos weren't reliable, it dropped them all.
+- `curious-slow` (76 min, 0.74M decisions): caught up late, with about 1,110 practice boosts (1.9 a minute at the end), count 2+ in 8.4% of practice, and 3 and 5 mini-turbos on the 71- and 74-minute test laps. Below `curious-slow-new` but rising. Its checkpoint `checkpoints/exp-curious-slow.pt` includes the curiosity state, so it can be resumed.
+
+**17. Is the winning recipe luck? Seeds 2 and 3 (running).** Training uses random numbers for the brain's starting settings, the practice dice and the learning order, and a seed fixes them all. Every run so far used seed 1, and early luck can snowball, so part of 13 against 3 could be luck. `train.py` has a `--seed` option now. Running alongside seed 1, with the same settings (slow student, from new, hold lengths, curiosity 0.3, GAE 0.95, 4 emulators, 150 minutes): `curious-slow-new-seed2` and `curious-slow-new-seed3`. If both also reach many test-lap mini-turbos by about 50 minutes, the recipe works; if not, seed 1 was lucky.
+
 Next steps, in order:
-1. Watch `curious-fade` with `scripts/lap_boosts.py curious-fade`: when, if ever, do test-lap boosts drop off as the weight falls? The prediction: it keeps mini-turbos where they reliably work and drops them where they mostly fail. Given item 11, expect a decline unless its attempts become reliable first.
-2. If `curious-slow` reaches several test-lap boosts per lap over a few versions in a row, fade from there and compare with `curious-fade`.
-3. Try a few curiosity weights, since 0.3 was a guess.
-4. If mini-turbos stay but stall, measure a replay-based method such as IQN.
+1. Compare seeds 1, 2 and 3 of the winning recipe with `scripts/lap_boosts.py`.
+2. If the recipe holds, make its mini-turbos pay: from its best brain, turn curiosity down in steps or fade it slowly, and watch whether test laps get faster than 1:43 while mini-turbos stay. `curious-fade` showed that unreliable mini-turbos are dropped, so only fade once they're reliable.
+3. Log `drift_newness` for boost moments too, to see whether boosting is still new when drifting is familiar.
+4. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses.
 
 ## Goal and targets
 

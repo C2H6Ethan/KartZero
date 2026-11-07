@@ -1,5 +1,6 @@
 """Tests for splitting a recording into races, and for the network's outputs."""
 
+import math
 import pytest
 import torch
 
@@ -94,3 +95,11 @@ def test_a_saved_brain_loads_with_its_own_sizes(tmp_path):
     assert (loaded.inputs, loaded.actions) == (37, 324)
     observation = torch.randn(1, 37)
     assert torch.equal(loaded(observation)[0].logits, network(observation)[0].logits)
+
+
+def test_newness_of_compares_chosen_moments_with_all_of_them():
+    from kartzero.learner import _newness_of
+
+    novelty = torch.tensor([1.0, 1.0, 4.0, 2.0])
+    assert _newness_of(novelty, torch.tensor([False, False, True, True])) == 3.0 / 2.0
+    assert math.isnan(_newness_of(novelty, torch.zeros(4, dtype=torch.bool)))
