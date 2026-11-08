@@ -306,7 +306,7 @@ python scripts/speed_check.py
 | `run_lap_tester` in `kartzero/test_lap.py` | Driving an official test lap for each saved version, in its own process | `drive_test_lap(network, environment)` |
 | `run_viewer` in `kartzero/viewer.py` | Showing the AI live in a resizable window, rolling the dice like training. It finishes each race before loading the newest AI, so it never switches mid-race | `run_viewer()` |
 | `GameWindow` in `kartzero/window.py` | The window itself. The emulator's own window can't stretch its picture | `show(image)` |
-| `draw_overlay` in `kartzero/overlay.py` | For watching only, styled like world record clips: hollow L, R, D-pad and face buttons in the bottom-left of the top screen, filled while held, and the speed in a blocky pixel font in the bottom right. Drawn after scaling, at window resolution, so lines stay thin. Speed shows km/h at 14.77 per game unit (an estimate matched to a record clip: our top speed 7.72 shows 114). Record clips never go above 114 even in a boost, while our number reaches 148, so they likely show something else (see Still unknown). The run name is in the window's title bar | `draw_overlay(image, held, speed, scale)` |
+| `draw_overlay` in `kartzero/overlay.py` | For watching only, styled like world record clips: hollow L, R, D-pad and face buttons in the bottom-left of the top screen, filled while held, and the speed in a blocky pixel font in the bottom right. Drawn after scaling, at window resolution, so lines stay thin. Speed shows km/h as 114 × `Kart.speed_fraction()` (how close the kart is to its current top speed), the best fit to record clips: 114 at full speed for any kart, never higher, and a dip when a boost starts (measured in our game: 101, then back to 114 within about 30 frames). Not a confirmed formula (see Still unknown). The run name is in the window's title bar | `draw_overlay(image, held, speed, scale)` |
 | `TrainingRun` in `kartzero/runs.py` | One folder in `runs/`, without loading PyTorch | `all_runs()`, `find_run("sticky0.5")`, `sticky_chance()`, `started_from()`, `best_test_lap()` |
 | `TrackSensors` in `kartzero/sensors.py` | Distances from the kart | `wall_distances(position, heading)`, `road_edge_distances(position, heading)` |
 
@@ -463,7 +463,7 @@ Ghosts start at `0xAF00` in the save, at `0xE00` bytes each, in 32 course slots 
 
 ## Still unknown
 
-- How world record clips compute their km/h. They show 114 at full speed for both Luigi and Dry Bones, and never more, even in a boost. In our game every speed value (`speed`, `maxSpeed`, `targetMaxSpeed`) jumps to 10.04 when a mini-turbo fires, so it's none of those directly. One fit, a guess: 114 × `maxSpeedFraction` (speed ÷ current top speed), which never passes 114 and dips for a moment when a boost starts (a clip showed 112 with boost flames).
+- How world record clips compute their km/h. They show 114 at full speed for both Luigi and Dry Bones, and never more, even in a boost. In our game every speed value (`speed`, `maxSpeed`, `targetMaxSpeed`) jumps to 10.04 when a mini-turbo fires, so it's none of those directly. The viewer now uses the best fit, 114 × `maxSpeedFraction` (how close to the current top speed), which never passes 114 and dips for a moment when a boost starts. A clip showed 112 with boost flames, which fits, but it's still a guess until someone sees the dip in a record clip.
 
 - Exactly what the driver changes.
 - Whether finishing a race writes to the shared `mkds.dsv` while emulators run in parallel. If so, stop sharing it, which probably needs the rebuilt DLL.

@@ -56,6 +56,11 @@ def test_speed_follows_the_racer_pointer_and_converts_to_a_decimal():
     assert make_kart({address: int(7.5 * FX32_ONE)}).speed() == 7.5
 
 
+def test_speed_fraction_reads_how_close_the_kart_is_to_its_top_speed():
+    address = RACER_ADDRESS + driver_t.maxSpeedFraction.offset
+    assert make_kart({address: int(0.5 * FX32_ONE)}).speed_fraction() == 0.5
+
+
 def test_position_reads_x_y_z_in_order():
     start = RACER_ADDRESS + driver_t.position.offset
     values = {start: 1 * FX32_ONE, start + 4: 2 * FX32_ONE, start + 8: -3 * FX32_ONE}

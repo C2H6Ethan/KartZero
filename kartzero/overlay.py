@@ -10,21 +10,18 @@ clean instead of becoming chunky blocks. Each look is built once per window size
 """
 
 from functools import lru_cache
-from typing import Optional
-
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from kartzero.buttons import Button
 
 TOP_SCREEN = (256, 192)
 
-# The game measures speed in distance per frame, with no real-world unit. World record clips show
-# km/h from a tool whose formula we couldn't find, so this matches them by eye: a record clip showed
-# Dry Bones in the ROB-BLS on a straight, unboosted, at 114 km/h, and our measured top speed for that
-# pair is 7.72, so 114 / 7.72 = 14.77. An ESTIMATE, good to about 1 km/h if that clip was at top speed.
-# A boost at full speed (10.03) then shows 148 km/h, which a record clip also showed.
-# Set to None to show the game's own number instead.
-KMH_PER_SPEED_UNIT: Optional[float] = 14.77
+# World record clips show km/h, from a tool whose formula we couldn't find. They show 114 at full
+# speed for any kart (Luigi and Dry Bones alike), and never more, even in a boost, while the game's own
+# speed jumps from 7.72 to 10.04 in a boost. What fits them: 114 times the game's "how close to top
+# speed" value, which is 1.0 at full speed and dips for a moment when a boost starts (a clip showed 112
+# with boost flames). A best-fit guess, not a confirmed formula.
+KMH_AT_TOP_SPEED = 114
 
 # Positions on the 256 x 192 top screen, in DS pixels, measured from a record clip.
 SHOULDERS = {Button.L: (5, 151, 31, 157), Button.R: (40, 151, 66, 157)}
@@ -47,11 +44,14 @@ CLEAR = (0, 0, 0, 0)
 Box = tuple[float, float, float, float]
 
 
-def draw_overlay(image: Image.Image, held: Button, speed: float, scale: float) -> Image.Image:
-    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on."""
+def draw_overlay(image: Image.Image, held: Button, speed_fraction: float, scale: float) -> Image.Image:
+    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on.
+
+    `speed_fraction` is how close the kart is to its current top speed, from `Kart.speed_fraction()`.
+    """
     frame = image.convert("RGBA")
     frame.alpha_composite(_buttons(round(scale, 2), int(held)))
-    text = f"{round(speed * KMH_PER_SPEED_UNIT)} km/h" if KMH_PER_SPEED_UNIT else f"{speed:.2f}"
+    text = f"{round(speed_fraction * KMH_AT_TOP_SPEED)} km/h"
     words = _text(text, max(1, round(scale)))
     corner = (round(SPEED_RIGHT * scale) - words.width, round(SPEED_BOTTOM * scale) - words.height)
     frame.alpha_composite(words, corner)
