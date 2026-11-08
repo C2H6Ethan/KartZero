@@ -6,7 +6,7 @@ Where the project stands, and everything we've measured and decided. Last update
 
 ## Where we are now
 
-**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and overnight on 7 to 8 November a curiosity-trained AI **beat the staff ghost**, and on 8 November its best test lap reached **1:27.98 with 57 mini-turbos** (a slower-learning polish run with no curiosity), 0.15 seconds off MarI/O Kart. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
+**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and overnight on 7 to 8 November a curiosity-trained AI **beat the staff ghost**, and on 8 November its best test lap reached **1:27.96 with 58 mini-turbos** (a slower-learning polish run with no curiosity), 0.13 seconds off MarI/O Kart. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
 
 **Official times come from test laps.** Each saved version gets one race with no exploration, always the likeliest button, in `runs/<run>/versions/test_laps.csv`. `watch.py --list` shows them. A separate process runs them, so training doesn't wait, and any untested versions get tested on the next `--resume`. Practice can mislead: the first AI reached 80% with dice rolls but just held reverse on top picks. The live viewer rolls the dice, so it shows practice, not test results.
 
@@ -244,6 +244,8 @@ Next steps, in order:
    - 16:31 (1h24m, about 0.68M decisions): **new best 1:27.98 with 57 mini-turbos** (at 1h10m, `runs/20261108-150614-polish-slow/versions/0001h10m_000000638976_decisions.pt`), **0.15 seconds off MarI/O Kart**. Also 1:28.59 and 1:28.89. Its last 10 test laps average 1:30.24, a little worse than at 15:59 because of two slow laps (1:34.57 and 1:33.20). Seed 2 at its 20h23m version: 1:40.61, best still 1:31.84.
    - Seed 2 ended about 17:00 (21.0 hours, 14.82M decisions, curiosity 0.3 throughout): its last version set its best, **1:31.36 with 50** (`0021h00m_000014819328_decisions.pt`), but its last 5 laps swing from 1:31.36 to 1:40.61. With curiosity on, it never got near the polished brains.
    - **Slow polish of seed 2 (`polish-slow-seed2`, started 17:03, 5 hours).** The same recipe as `polish-slow` (learning rate 0.0001, curiosity 0, 4 emulators), from seed 2's 1:31.36 brain, with seed 2. It checks whether slow polishing works for a second seed, and gives a second chance at 1:27.832.
+   - **`polish-slow` result (ended 20:06, 5.0 hours, 80 test laps, all finished, 46 to 63 mini-turbos each).** Best **1:27.96 with 58** (at 4h08m, `runs/20261108-150614-polish-slow/versions/0004h08m_000002832384_decisions.pt`), **0.13 seconds off MarI/O Kart**. Averages of 10 laps in a row stayed between 1:29.46 and 1:30.94 the whole way, with the best of each 10 between 1:27.96 and 1:28.83, and the last 10 were the best (average 1:29.46). So the smaller step gained about 2 seconds in the first 30 minutes, then levelled off near 1:28 to 1:30.
+   - `polish-slow-seed2` at 20:06 (3 hours): **1:28.42 with 59 within 23 minutes**, from seed 2's 1:31.36, and 10-lap averages of 1:29.70 to 1:31.13 since. So slow polishing worked for a second seed too, and both level off in the same place.
 4. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
 5. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
 6. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.
@@ -254,7 +256,7 @@ Beat **1:27.832** on Figure-8 Circuit self-taught.
 
 | Order | Target | Time | Source |
 |---:|---|---:|---|
-| 1 | Staff ghost, **beaten 8 November: best so far 1:27.98** | 1:36.481 | Shown in the game |
+| 1 | Staff ghost, **beaten 8 November: best so far 1:27.96** | 1:36.481 | Shown in the game |
 | 2 | **MarI/O Kart, the main goal** | 1:27.832 | Its video: laps 29.717, 29.107, 29.008, with 73 mini-turbos |
 | 3 | My best time | 1:23.013, best lap 27.158 | My save. I don't know if it used the mushroom |
 | 4 | Human record, stretch only | 1:11.387 | mkwrs, Taiga, 19 April 2024. Other sites list 1:11.510 and 1:11.625, so recheck before quoting it |
