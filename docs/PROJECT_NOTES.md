@@ -227,7 +227,7 @@ Night checks:
 - Mini-turbos per lap rose from about 14 (evening) to about 50 to 60. MarI/O Kart used 73.
 
 Next steps, in order:
-1. Keep training both seeds with `--resume` (same settings: 4 emulators, 512 decisions per chunk, curiosity 0.3, student rate 0.000025, hold lengths, GAE 0.95). Neither had levelled off.
+1. Keep training both seeds with `--resume` (same settings: 4 emulators, 512 decisions per chunk, curiosity 0.3, student rate 0.000025, hold lengths, GAE 0.95). Neither had levelled off. **Running from 07:02 on 8 November, for up to 10 hours:** seed 1 from 9.62M decisions, seed 2 from 8.35M.
 2. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
 3. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
 4. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.
