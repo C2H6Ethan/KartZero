@@ -239,9 +239,10 @@ Next steps, in order:
    - 13:53: **new best 1:29.87 with 54 mini-turbos** (at 2h51m, 2.05M decisions, `runs/20261108-100320-polish/versions/0002h51m_000002045952_decisions.pt`), trained with **no curiosity at all** for the last 1M decisions, so it's pure progress-and-time learning. Also 1:29.98 with 57. Last six laps 1:29.98 to 1:32.26. Seed 2: 1:33.14 to 1:38.36, best still 1:31.85.
    - **Result (ended 15:03, 5.0 hours, 3.21M decisions).** Best still **1:29.87 with 54**, from 2h51m. No new best in the last 2 hours. Its 40 test laps after curiosity reached 0 all finished, with **44 to 57 mini-turbos each**, and 17 of them were under 1:32 (4 laps in the whole run under 1:30: 1:29.87, 1:29.90, 1:29.94, 1:29.98). Averages of 10 laps in a row: 1:32.01, then 1:31.49, then 1:32.31 for the last 10. So it **levelled off at about 1:31 to 1:32**, with its best laps near 1:30. The fade kept mini-turbos for good this time, but plain speed learning alone didn't keep improving after about 2 hours at 0.
    - Seed 2 (curiosity 0.3, still running) at 13.56M decisions: 1:32.95 to 1:38.36 lately, best still 1:31.85.
-3. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
-4. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
-5. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.
+3. **Slow polish (`polish-slow`, started 15:06 on 8 November, 5 hours).** From the 1:29.87 brain, with the learning rate at 0.0001 instead of 0.0003 (`--learning-rate`, new), curiosity 0 from the start, otherwise the same recipe on 4 emulators. The idea, a guess: the polish brain swings by 1 to 2 seconds from version to version, which suggests each update is too big for fine details, so smaller steps may keep what works and climb past the plateau. It's judged by its average test lap over 10 versions against the polish run's 1:31.5 to 1:32.3, and by whether it beats 1:29.87.
+4. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
+5. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
+6. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.
 
 ## Goal and targets
 
