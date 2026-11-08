@@ -306,6 +306,7 @@ python scripts/speed_check.py
 | `run_lap_tester` in `kartzero/test_lap.py` | Driving an official test lap for each saved version, in its own process | `drive_test_lap(network, environment)` |
 | `run_viewer` in `kartzero/viewer.py` | Showing the AI live in a resizable window, rolling the dice like training. It finishes each race before loading the newest AI, so it never switches mid-race | `run_viewer()` |
 | `GameWindow` in `kartzero/window.py` | The window itself. The emulator's own window can't stretch its picture | `show(image)` |
+| `draw_overlay` in `kartzero/overlay.py` | For watching only: the held buttons (L, R, D-pad, A, B, X, Y) on the left of the top screen and the speed at the bottom right. Speed is in the game's own units (distance per frame) until a confirmed km/h conversion exists. Every game window draws it | `draw_overlay(image, held, speed)` |
 | `TrainingRun` in `kartzero/runs.py` | One folder in `runs/`, without loading PyTorch | `all_runs()`, `find_run("sticky0.5")`, `sticky_chance()`, `started_from()`, `best_test_lap()` |
 | `TrackSensors` in `kartzero/sensors.py` | Distances from the kart | `wall_distances(position, heading)`, `road_edge_distances(position, heading)` |
 
