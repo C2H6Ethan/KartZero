@@ -56,13 +56,6 @@ class Kart:
         """Distance covered per frame."""
         return self._read_racer_decimal(driver_t.speed.offset)
 
-    def speed_fraction(self) -> float:
-        """How close the kart is to its current top speed: 1.0 at top speed, 0 standing still.
-
-        A boost raises the top speed first, so this dips when a boost starts, then climbs back to 1.0.
-        """
-        return self._read_racer_decimal(driver_t.maxSpeedFraction.offset)
-
     def position(self) -> Vector3:
         """Where the kart is on the track, as (x, y, z)."""
         return self._read_racer_vector(driver_t.position.offset)

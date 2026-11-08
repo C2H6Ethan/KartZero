@@ -3,7 +3,7 @@
 from PIL import Image
 
 from kartzero.buttons import Button
-from kartzero.overlay import DPAD_BOX, FACE_CENTRE, FACE_GAP, SHOULDERS, SPEED_BOTTOM, SPEED_RIGHT, draw_overlay
+from kartzero.overlay import DPAD_BOX, shown_kmh, FACE_CENTRE, FACE_GAP, SHOULDERS, SPEED_BOTTOM, SPEED_RIGHT, draw_overlay
 
 SCALE = 3
 BLACK = (0, 0, 0)
@@ -20,7 +20,7 @@ def at(x, y):
 
 
 def test_held_buttons_are_filled_in_and_others_are_not():
-    drawn = draw_overlay(frame(), Button.A | Button.R | Button.LEFT, 1.0, SCALE)
+    drawn = draw_overlay(frame(), Button.A | Button.R | Button.LEFT, 7.72, SCALE)
     middle_y = (DPAD_BOX[1] + DPAD_BOX[3]) / 2
     assert drawn.getpixel(at(DPAD_BOX[0] + 4, middle_y)) == WHITE  # inside the LEFT arm
     assert drawn.getpixel(at(DPAD_BOX[2] - 4, middle_y)) == BLACK  # inside the RIGHT arm
@@ -39,13 +39,20 @@ def test_buttons_have_a_white_stroke_even_when_not_held():
 
 
 def test_the_speed_is_drawn_in_the_bottom_right_of_the_top_screen():
-    drawn = draw_overlay(frame(), Button.NONE, 1.0, SCALE)
+    drawn = draw_overlay(frame(), Button.NONE, 7.72, SCALE)
     corner = drawn.crop((round((SPEED_RIGHT - 60) * SCALE), round((SPEED_BOTTOM - 12) * SCALE), round(SPEED_RIGHT * SCALE), round(SPEED_BOTTOM * SCALE)))
     assert corner.getextrema()[0][1] == 255  # some fully white pixel
 
 
 def test_the_bottom_screen_and_the_original_are_left_alone():
     original = frame()
-    drawn = draw_overlay(original, Button.A | Button.LEFT, 1.0, SCALE)
+    drawn = draw_overlay(original, Button.A | Button.LEFT, 7.72, SCALE)
     assert drawn.crop((0, 192 * SCALE, 256 * SCALE, 384 * SCALE)).getextrema() == ((0, 0), (0, 0), (0, 0))
     assert original.getextrema() == ((0, 0), (0, 0), (0, 0))
+
+
+def test_km_h_is_the_share_of_top_speed_and_stops_at_114():
+    assert shown_kmh(0.0) == 0
+    assert shown_kmh(3.86) == 57  # half of top speed
+    assert shown_kmh(7.72) == 114
+    assert shown_kmh(10.04) == 114  # a boost doesn't go higher, like the record clips

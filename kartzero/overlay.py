@@ -16,12 +16,11 @@ from kartzero.buttons import Button
 
 TOP_SCREEN = (256, 192)
 
-# World record clips show km/h, from a tool whose formula we couldn't find. They show 114 at full
-# speed for any kart (Luigi and Dry Bones alike), and never more, even in a boost, while the game's own
-# speed jumps from 7.72 to 10.04 in a boost. What fits them: 114 times the game's "how close to top
-# speed" value, which is 1.0 at full speed and dips for a moment when a boost starts (a clip showed 112
-# with boost flames). A best-fit guess, not a confirmed formula.
+# Speed is shown the way world record clips show it, so the two can be compared: 114 km/h at the
+# kart's normal top speed, never more, even in a boost. Below top speed it's the real share of it, so
+# being slower than the kart can go, like off-road or after a crash, shows as a lower number.
 KMH_AT_TOP_SPEED = 114
+TOP_SPEED = 7.72  # measured top speed of Dry Bones in the ROB-BLS, without a boost
 
 # Positions on the 256 x 192 top screen, in DS pixels, measured from a record clip.
 SHOULDERS = {Button.L: (5, 151, 31, 157), Button.R: (40, 151, 66, 157)}
@@ -44,18 +43,20 @@ CLEAR = (0, 0, 0, 0)
 Box = tuple[float, float, float, float]
 
 
-def draw_overlay(image: Image.Image, held: Button, speed_fraction: float, scale: float) -> Image.Image:
-    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on.
-
-    `speed_fraction` is how close the kart is to its current top speed, from `Kart.speed_fraction()`.
-    """
+def draw_overlay(image: Image.Image, held: Button, speed: float, scale: float) -> Image.Image:
+    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on."""
     frame = image.convert("RGBA")
     frame.alpha_composite(_buttons(round(scale, 2), int(held)))
-    text = f"{round(speed_fraction * KMH_AT_TOP_SPEED)} km/h"
+    text = f"{shown_kmh(speed)} km/h"
     words = _text(text, max(1, round(scale)))
     corner = (round(SPEED_RIGHT * scale) - words.width, round(SPEED_BOTTOM * scale) - words.height)
     frame.alpha_composite(words, corner)
     return frame.convert("RGB")
+
+
+def shown_kmh(speed: float) -> int:
+    """The km/h to show for a speed in the game's units: its share of top speed, with 114 at the top."""
+    return round(KMH_AT_TOP_SPEED * min(speed / TOP_SPEED, 1.0))
 
 
 @lru_cache(maxsize=64)

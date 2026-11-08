@@ -31,7 +31,7 @@ class GameWindow:
     def closed(self) -> bool:
         return self._closed
 
-    def show(self, image: Image.Image, held: Optional[Button] = None, speed_fraction: float = 0.0) -> None:
+    def show(self, image: Image.Image, held: Optional[Button] = None, speed: float = 0.0) -> None:
         """Draw the image at the largest size that fits, and let the window respond to the mouse.
 
         With `held`, the held buttons and the speed are drawn on top, after scaling, so they stay sharp.
@@ -45,7 +45,7 @@ class GameWindow:
         size = (max(1, round(DS_WIDTH * scale)), max(1, round(DS_HEIGHT * scale)))
         picture = image.resize(size, Image.Resampling.NEAREST)
         if held is not None:
-            picture = draw_overlay(picture, held, speed_fraction, scale)
+            picture = draw_overlay(picture, held, speed, scale)
         self._photo = ImageTk.PhotoImage(picture)
         self._picture.configure(image=self._photo)
 

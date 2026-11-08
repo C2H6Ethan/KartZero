@@ -122,7 +122,7 @@ class Game:
 
     def _advance_in_window(self, window: GameWindow) -> None:
         self._emulator.cycle(with_joystick=False)
-        window.show(self._emulator.screenshot(), self._held, self.kart.speed_fraction())
+        window.show(self._emulator.screenshot(), self._held, self.kart.speed())
         self._next_frame_time = max(self._next_frame_time, time.perf_counter() - WATCH_FRAME_SECONDS)
         self._next_frame_time += WATCH_FRAME_SECONDS
         time.sleep(max(0.0, self._next_frame_time - time.perf_counter()))
