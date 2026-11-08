@@ -133,3 +133,17 @@ def test_a_column_no_longer_logged_stays_and_is_left_blank(tmp_path):
     rows = list(csv.DictReader(open(file, newline="")))
     assert rows[0]["share_at_count_3"] == "0.1" and rows[1]["share_at_count_3"] == ""
     assert rows[1]["share_at_count_4"] == "0.2"
+
+
+def test_every_training_session_is_recorded(tmp_path):
+    import json
+
+    from kartzero.learner import SESSIONS_FILE, record_session
+    from kartzero.settings import Settings
+
+    record_session(tmp_path, Settings(emulators=4), "abc", 0)
+    record_session(tmp_path, Settings(emulators=8), "def+uncommitted", 1_000_000)
+    sessions = [json.loads(line) for line in (tmp_path / SESSIONS_FILE).read_text().splitlines()]
+    assert [s["code_version"] for s in sessions] == ["abc", "def+uncommitted"]
+    assert [s["settings"]["emulators"] for s in sessions] == [4, 8]
+    assert sessions[1]["from_decisions"] == 1_000_000

@@ -230,6 +230,7 @@ Next steps, in order:
 1. Keep training both seeds with `--resume` (same settings: 4 emulators, 512 decisions per chunk, curiosity 0.3, student rate 0.000025, hold lengths, GAE 0.95). Neither had levelled off. **Running from 07:02 on 8 November, for up to 10 hours:** seed 1 from 9.62M decisions, seed 2 from 8.35M.
    - 08:00: seed 1 at 10.09M: 1:43.52 with 47, then 1:34.35 with 57. Seed 2 at 8.97M: 1:40.14 with 42, then 1:33.85 with 49. No new bests yet. Versions now come about every 20 minutes per run (the 3% rule at this size).
    - 08:59: **seed 2 new best: 1:31.85 with 52** (at 12h54m, 9.51M decisions, `0012h54m_000009512960_decisions.pt`), after 1:32.21 with 51. Seed 1 at 11.03M is the steadiest it has been: 1:33.43 to 1:34.35 with 52 to 58 on its last four laps.
+   - 09:58: seed 1 at 11.70M looks level: its last six laps are all 1:33.43 to 1:34.35, with 49 to 58 mini-turbos, and no new best since 1:32.65 at 12h36m (about 3 hours of training). Seed 2 at 10.39M slipped back to 1:36.05 to 1:37.48 after its 1:31.85.
 2. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
 3. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
 4. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.

@@ -173,9 +173,11 @@ class Trainer:
         self._last_end_progress = float("nan")  # no race has ended yet
 
         run_folder.mkdir(parents=True, exist_ok=True)
+        code_version = _code_version()
         settings_file = run_folder / "settings.json"
         if not settings_file.exists():
-            settings_file.write_text(json.dumps(asdict(settings) | {"code_version": _code_version()}, indent=2))
+            settings_file.write_text(json.dumps(asdict(settings) | {"code_version": code_version}, indent=2))
+        record_session(run_folder, settings, code_version, self._total_decisions)
 
         self._connections: list[Any] = []  # the connection type differs between operating systems
         self._workers: list[BaseProcess] = []
@@ -444,6 +446,25 @@ class TrainingLog:
                 writer.writerows(rows)
             os.replace(temporary, self._file)
         return lined_up
+
+
+SESSIONS_FILE = "sessions.jsonl"
+
+
+def record_session(run_folder: Path, settings: Settings, code_version: str, decisions: int) -> None:
+    """Add one line to the run's sessions file each time training starts or resumes.
+
+    settings.json only describes how a run started. A resumed run can use newer code or other
+    settings, like a different number of emulators, so each session is recorded to keep runs reproducible.
+    """
+    session = {
+        "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "from_decisions": decisions,
+        "code_version": code_version,
+        "settings": asdict(settings),
+    }
+    with open(run_folder / SESSIONS_FILE, "a") as file:
+        file.write(json.dumps(session) + "\n")
 
 
 def _code_version() -> str:
