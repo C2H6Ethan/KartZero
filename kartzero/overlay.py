@@ -16,9 +16,12 @@ EDGE = (235, 235, 235)
 HELD = (255, 255, 255)
 LINE = 2
 
-# The game measures speed in distance per frame (our kart's top speed is 7.72). There's no confirmed
-# conversion to km/h, so until there is one, the overlay shows the game's own number.
-KMH_PER_SPEED_UNIT: Optional[float] = None
+# The game measures speed in distance per frame, with no real-world unit. World record clips show
+# km/h from a tool whose formula we couldn't find, so this matches them by eye: a record clip showed
+# Dry Bones in the ROB-BLS on a straight, unboosted, at 114 km/h, and our measured top speed for that
+# pair is 7.72, so 114 / 7.72 = 14.77. An ESTIMATE, good to about 1 km/h if that clip was at top speed.
+# Set to None to show the game's own number instead.
+KMH_PER_SPEED_UNIT: Optional[float] = 14.77
 
 # Positions on the 256 x 192 top screen, below the game's item box in the top-left corner.
 SHOULDERS = {Button.L: (6, 54, 38, 60), Button.R: (44, 54, 76, 60)}
