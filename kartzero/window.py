@@ -1,5 +1,6 @@
 """A resizable window that shows the game, scaled to fit. The emulator's own window can't stretch its picture."""
 
+import math
 import tkinter as tk
 from typing import Optional
 
@@ -11,6 +12,19 @@ from kartzero.overlay import draw_overlay
 TITLE = "KartZero"
 DS_WIDTH, DS_HEIGHT = 256, 384  # both screens, one above the other
 START_SCALE = 2
+
+
+def sharp_scale(image: Image.Image, scale: float) -> Image.Image:
+    """Scale pixel art up so every game pixel ends up the same size ("sharp bilinear").
+
+    Scaling straight to an uneven size like 2.81 makes some pixels 2 screen pixels wide and others 3,
+    which looks jagged. So scale up by the next whole number with hard edges, then smoothly down to the
+    exact size, which only softens the pixel edges by a fraction of a pixel.
+    """
+    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    whole = max(1, math.ceil(scale))
+    big = image.resize((image.width * whole, image.height * whole), Image.Resampling.NEAREST)
+    return big if big.size == size else big.resize(size, Image.Resampling.BOX)
 
 
 class GameWindow:
@@ -42,10 +56,9 @@ class GameWindow:
         if self._closed:
             return
         scale = min(self._root.winfo_width() / DS_WIDTH, self._root.winfo_height() / DS_HEIGHT)
-        size = (max(1, round(DS_WIDTH * scale)), max(1, round(DS_HEIGHT * scale)))
-        picture = image.resize(size, Image.Resampling.NEAREST)
+        picture = sharp_scale(image.convert("RGB"), scale)
         if held is not None:
-            picture = draw_overlay(picture, held, speed, scale)
+            draw_overlay(picture, held, speed, scale)
         self._photo = ImageTk.PhotoImage(picture)
         self._picture.configure(image=self._photo)
 

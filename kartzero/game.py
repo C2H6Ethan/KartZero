@@ -19,6 +19,8 @@ ROM = ROOT / "game" / "mkds.nds"
 SAVE = ROOT / "game" / "mkds.sav"
 SNAPSHOT = ROOT / "savestates" / "f8c_time_trial.dst"
 WATCH_FRAME_SECONDS = 1 / 60
+MAX_FRAMES_NOT_SHOWN = 3  # when drawing can't keep up, still show at least every 4th frame
+MAX_SECONDS_BEHIND = 0.25
 USE_JIT_OFFSET = 0xF54FFC5  # in libdesmume.dll from py-desmume-mkds 0.0.20
 JIT_BLOCK_SIZE_DISTANCE = 3
 JIT_DEFAULT_BLOCK_SIZE = 12
@@ -42,6 +44,7 @@ class Game:
         self._window: Optional[GameWindow] = None
         self._next_frame_time = 0.0
         self._held = Button.NONE  # shown in the window's overlay
+        self._frames_not_shown = 0
 
     def _enable_jit(self) -> None:
         """Run the game's code as compiled code, about 1.8 times faster with identical results.
@@ -121,9 +124,21 @@ class Game:
                 self._emulator.cycle(with_joystick=False)
 
     def _advance_in_window(self, window: GameWindow) -> None:
+        """Run one frame at normal speed. If drawing can't keep up, skip showing some frames, so the
+        game still runs at normal speed instead of slow motion, but always show at least every few."""
+        now = time.perf_counter()
+        if now - self._next_frame_time > MAX_SECONDS_BEHIND:  # far behind, like after a pause: start afresh
+            self._next_frame_time = now
+        behind = now - self._next_frame_time > WATCH_FRAME_SECONDS
+        show = not behind or self._frames_not_shown >= MAX_FRAMES_NOT_SHOWN
+        if not show:
+            self._emulator.skip_next_frame()
         self._emulator.cycle(with_joystick=False)
-        window.show(self._emulator.screenshot(), self._held, self.kart.speed())
-        self._next_frame_time = max(self._next_frame_time, time.perf_counter() - WATCH_FRAME_SECONDS)
+        if show:
+            window.show(self._emulator.screenshot(), self._held, self.kart.speed())
+            self._frames_not_shown = 0
+        else:
+            self._frames_not_shown += 1
         self._next_frame_time += WATCH_FRAME_SECONDS
         time.sleep(max(0.0, self._next_frame_time - time.perf_counter()))
 

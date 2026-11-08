@@ -43,15 +43,15 @@ CLEAR = (0, 0, 0, 0)
 Box = tuple[float, float, float, float]
 
 
-def draw_overlay(image: Image.Image, held: Button, speed: float, scale: float) -> Image.Image:
-    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on."""
-    frame = image.convert("RGBA")
-    frame.alpha_composite(_buttons(round(scale, 2), int(held)))
-    text = f"{shown_kmh(speed)} km/h"
-    words = _text(text, max(1, round(scale)))
-    corner = (round(SPEED_RIGHT * scale) - words.width, round(SPEED_BOTTOM * scale) - words.height)
-    frame.alpha_composite(words, corner)
-    return frame.convert("RGB")
+def draw_overlay(picture: Image.Image, held: Button, speed: float, scale: float) -> None:
+    """Draw the held buttons and the speed onto the picture, which is already scaled up by `scale`.
+
+    It draws in place, pasting ready-made layers, because this runs for every frame the window shows.
+    """
+    buttons = _buttons(round(scale, 2), int(held))
+    picture.paste(buttons, (0, 0), buttons)
+    words = _text(f"{shown_kmh(speed)} km/h", max(1, round(scale)))
+    picture.paste(words, (round(SPEED_RIGHT * scale) - words.width, round(SPEED_BOTTOM * scale) - words.height), words)
 
 
 def shown_kmh(speed: float) -> int:

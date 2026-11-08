@@ -20,7 +20,8 @@ def at(x, y):
 
 
 def test_held_buttons_are_filled_in_and_others_are_not():
-    drawn = draw_overlay(frame(), Button.A | Button.R | Button.LEFT, 7.72, SCALE)
+    drawn = frame()
+    draw_overlay(drawn, Button.A | Button.R | Button.LEFT, 7.72, SCALE)
     middle_y = (DPAD_BOX[1] + DPAD_BOX[3]) / 2
     assert drawn.getpixel(at(DPAD_BOX[0] + 4, middle_y)) == WHITE  # inside the LEFT arm
     assert drawn.getpixel(at(DPAD_BOX[2] - 4, middle_y)) == BLACK  # inside the RIGHT arm
@@ -32,23 +33,42 @@ def test_held_buttons_are_filled_in_and_others_are_not():
 
 
 def test_buttons_have_a_white_stroke_even_when_not_held():
-    drawn = draw_overlay(frame(), Button.NONE, 0.0, SCALE)
+    drawn = frame()
+    draw_overlay(drawn, Button.NONE, 0.0, SCALE)
     x, y = FACE_CENTRE[0], FACE_CENTRE[1] + FACE_GAP
     column = [drawn.getpixel((round(x * SCALE), row)) for row in range(round((y - 6) * SCALE), round(y * SCALE))]
     assert WHITE in column
 
 
 def test_the_speed_is_drawn_in_the_bottom_right_of_the_top_screen():
-    drawn = draw_overlay(frame(), Button.NONE, 7.72, SCALE)
+    drawn = frame()
+    draw_overlay(drawn, Button.NONE, 7.72, SCALE)
     corner = drawn.crop((round((SPEED_RIGHT - 60) * SCALE), round((SPEED_BOTTOM - 12) * SCALE), round(SPEED_RIGHT * SCALE), round(SPEED_BOTTOM * SCALE)))
     assert corner.getextrema()[0][1] == 255  # some fully white pixel
 
 
-def test_the_bottom_screen_and_the_original_are_left_alone():
-    original = frame()
-    drawn = draw_overlay(original, Button.A | Button.LEFT, 7.72, SCALE)
+def test_the_bottom_screen_is_left_alone():
+    drawn = frame()
+    draw_overlay(drawn, Button.A | Button.LEFT, 7.72, SCALE)
     assert drawn.crop((0, 192 * SCALE, 256 * SCALE, 384 * SCALE)).getextrema() == ((0, 0), (0, 0), (0, 0))
-    assert original.getextrema() == ((0, 0), (0, 0), (0, 0))
+
+
+def test_sharp_scaling_makes_every_game_pixel_the_same_size():
+    from kartzero.window import sharp_scale
+
+    checkerboard = Image.new("L", (8, 8))
+    checkerboard.putdata([255 * ((x + y) % 2) for y in range(8) for x in range(8)])
+    scaled = sharp_scale(checkerboard, 2.5)
+    assert scaled.size == (20, 20)
+    row = [scaled.getpixel((x, 10)) for x in range(20)]
+    widths, run = [], 1  # the width of each solid run of light or dark pixels, ignoring soft edges
+    for left, right in zip(row, row[1:]):
+        if (left > 127) == (right > 127):
+            run += 1
+        else:
+            widths.append(run)
+            run = 1
+    assert max(widths[1:-1]) - min(widths[1:-1]) <= 1
 
 
 def test_km_h_shows_114_at_boost_speed_and_less_without_a_boost():
