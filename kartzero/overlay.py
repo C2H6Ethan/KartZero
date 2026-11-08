@@ -1,98 +1,185 @@
 """Draws the held buttons and the speed over the top screen, for watching only. Training never sees it.
 
-The left of the top screen shows the L and R shoulder buttons, the D-pad and the four face buttons,
-with held ones filled in. The bottom right shows the kart's speed. It's drawn at the DS's own size, so it
-gets the same chunky pixels as the game when the window scales up.
+The style copies the overlay in Mario Kart DS world record clips: hollow shapes with a white stroke
+and a fine black edge, filled white while held, in the bottom-left corner of the top screen, and the
+speed in a blocky pixel font in the bottom-right corner. Positions and sizes were measured from a
+record clip, in DS pixels.
+
+It's drawn after the picture is scaled up, at the window's own resolution, so lines stay thin and
+clean instead of becoming chunky blocks. Each look is built once per window size and reused.
 """
 
+from functools import lru_cache
 from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from kartzero.buttons import Button
 
-OUTLINE = (24, 24, 24)
-EDGE = (235, 235, 235)
-HELD = (255, 255, 255)
-LINE = 2
+TOP_SCREEN = (256, 192)
 
 # The game measures speed in distance per frame, with no real-world unit. World record clips show
 # km/h from a tool whose formula we couldn't find, so this matches them by eye: a record clip showed
 # Dry Bones in the ROB-BLS on a straight, unboosted, at 114 km/h, and our measured top speed for that
 # pair is 7.72, so 114 / 7.72 = 14.77. An ESTIMATE, good to about 1 km/h if that clip was at top speed.
+# A boost at full speed (10.03) then shows 148 km/h, which a record clip also showed.
 # Set to None to show the game's own number instead.
 KMH_PER_SPEED_UNIT: Optional[float] = 14.77
 
-# Positions on the 256 x 192 top screen, below the game's item box in the top-left corner.
-SHOULDERS = {Button.L: (6, 54, 38, 60), Button.R: (44, 54, 76, 60)}
-DPAD_CENTRE = (21, 85)
-ARM = 6  # half the width of each D-pad arm
-REACH = 15  # from the centre to the end of each arm
-FACE_CENTRE = (60, 85)
-FACE_GAP = 11  # from the centre of the diamond to each button
+# Positions on the 256 x 192 top screen, in DS pixels, measured from a record clip.
+SHOULDERS = {Button.L: (5, 151, 31, 157), Button.R: (40, 151, 66, 157)}
+DPAD_BOX = (5, 163, 31, 189)
+DPAD_ARM = 9  # how wide each arm of the D-pad is
+FACE_CENTRE = (52, 176)
+FACE_GAP = 9.5  # from the centre of the diamond to each face button
 FACE_RADIUS = 5
-SPEED_BOTTOM = 186  # the speed sits in the bottom-right corner of the top screen
+SPEED_RIGHT = 251  # where the speed text ends
+SPEED_BOTTOM = 181  # where the speed text sits
+
+# Line widths, in DS pixels: a fine black edge, a white stroke, then another fine black edge.
+EDGE = 0.4
+STROKE = 0.8
+
+BLACK = (0, 0, 0, 255)
+WHITE = (255, 255, 255, 255)
+CLEAR = (0, 0, 0, 0)
+
+Box = tuple[float, float, float, float]
 
 
-def draw_overlay(image: Image.Image, held: Button, speed: float) -> Image.Image:
-    """A copy of both screens with the held buttons and the speed drawn on the top one."""
-    frame = image.convert("RGB")
-    draw = ImageDraw.Draw(frame)
-    for button, box in SHOULDERS.items():
-        _shape(draw, box, button in held, rounded=True)
-    _dpad(draw, held)
-    _face_buttons(draw, held)
-    _speed(draw, frame.width, speed)
-    return frame
+def draw_overlay(image: Image.Image, held: Button, speed: float, scale: float) -> Image.Image:
+    """A copy of the picture, already scaled up by `scale`, with the held buttons and speed drawn on."""
+    frame = image.convert("RGBA")
+    frame.alpha_composite(_buttons(round(scale, 2), int(held)))
+    text = f"{round(speed * KMH_PER_SPEED_UNIT)} km/h" if KMH_PER_SPEED_UNIT else f"{speed:.2f}"
+    words = _text(text, max(1, round(scale)))
+    corner = (round(SPEED_RIGHT * scale) - words.width, round(SPEED_BOTTOM * scale) - words.height)
+    frame.alpha_composite(words, corner)
+    return frame.convert("RGB")
 
 
-def _shape(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], held: bool, rounded: bool) -> None:
-    fill = HELD if held else None
-    if rounded:
-        draw.rounded_rectangle(box, radius=3, fill=fill, outline=OUTLINE, width=LINE + 2)
-        draw.rounded_rectangle(box, radius=3, fill=fill, outline=EDGE, width=1)
-    else:
-        draw.ellipse(box, fill=fill, outline=OUTLINE, width=LINE + 2)
-        draw.ellipse(box, fill=fill, outline=EDGE, width=1)
+@lru_cache(maxsize=64)
+def _buttons(scale: float, held: int) -> Image.Image:
+    """Every button outline, and the held ones filled in, on a clear layer the size of the scaled top screen."""
+    outlines, fills = _shapes(scale)
+    layer = Image.new("RGBA", _scaled_size(scale), CLEAR)
+    edge, stroke = _line_widths(scale)
+    for shape in outlines:
+        inside_edge = _shrink(shape, edge)
+        inside_stroke = _shrink(inside_edge, stroke)
+        layer.paste(BLACK, mask=ImageChops.subtract(shape, inside_edge))
+        layer.paste(WHITE, mask=ImageChops.subtract(inside_edge, inside_stroke))
+        layer.paste(BLACK, mask=ImageChops.subtract(inside_stroke, _shrink(inside_stroke, edge)))
+    for button, inside in fills.items():
+        if held & int(button):
+            layer.paste(WHITE, mask=inside)
+    return layer
 
 
-def _dpad(draw: ImageDraw.ImageDraw, held: Button) -> None:
-    x, y = DPAD_CENTRE
-    cross = [
-        (x - ARM, y - REACH), (x + ARM, y - REACH), (x + ARM, y - ARM), (x + REACH, y - ARM),
-        (x + REACH, y + ARM), (x + ARM, y + ARM), (x + ARM, y + REACH), (x - ARM, y + REACH),
-        (x - ARM, y + ARM), (x - REACH, y + ARM), (x - REACH, y - ARM), (x - ARM, y - ARM),
-    ]
-    draw.polygon(cross, outline=OUTLINE, width=LINE + 2)
-    draw.polygon(cross, outline=EDGE, width=1)
-    arms = {
-        Button.UP: (x - ARM + 2, y - REACH + 2, x + ARM - 2, y - 2),
-        Button.DOWN: (x - ARM + 2, y + 2, x + ARM - 2, y + REACH - 2),
-        Button.LEFT: (x - REACH + 2, y - ARM + 2, x - 2, y + ARM - 2),
-        Button.RIGHT: (x + 2, y - ARM + 2, x + REACH - 2, y + ARM - 2),
+@lru_cache(maxsize=8)
+def _shapes(scale: float) -> tuple[list[Image.Image], dict[Button, Image.Image]]:
+    """The shapes to outline, and the inside of each button, filled while it's held, at this scale."""
+    edge, stroke = _line_widths(scale)
+    lines = 2 * edge + stroke
+
+    def solid(box: Box, round_ends: bool = False, circle: bool = False) -> Image.Image:
+        corners = (round(box[0] * scale), round(box[1] * scale), round(box[2] * scale), round(box[3] * scale))
+        mask = Image.new("L", _scaled_size(scale), 0)
+        draw = ImageDraw.Draw(mask)
+        if circle:
+            draw.ellipse(corners, fill=255)
+        elif round_ends:
+            draw.rounded_rectangle(corners, radius=(corners[3] - corners[1]) // 2, fill=255)
+        else:
+            draw.rectangle(corners, fill=255)
+        return mask
+
+    outlines: list[Image.Image] = []
+    fills: dict[Button, Image.Image] = {}
+    for button, shoulder in SHOULDERS.items():
+        shape = solid(shoulder, round_ends=True)
+        outlines.append(shape)
+        fills[button] = _shrink(shape, lines)
+
+    left, top, right, bottom = DPAD_BOX
+    middle_x, middle_y, half = (left + right) / 2, (top + bottom) / 2, DPAD_ARM / 2
+    # Each arm stops at the centre square, so a held direction fills only its own arm.
+    arms: dict[Button, Box] = {
+        Button.UP: (middle_x - half, top, middle_x + half, middle_y - half),
+        Button.DOWN: (middle_x - half, middle_y + half, middle_x + half, bottom),
+        Button.LEFT: (left, middle_y - half, middle_x - half, middle_y + half),
+        Button.RIGHT: (middle_x + half, middle_y - half, right, middle_y + half),
     }
+    cross = solid((middle_x - half, middle_y - half, middle_x + half, middle_y + half))
+    for box in arms.values():
+        cross = ImageChops.lighter(cross, solid(box))
+    outlines.append(cross)  # the D-pad is outlined once, as a whole cross
+    inside_cross = _shrink(cross, lines)
     for button, box in arms.items():
-        if button in held:
-            draw.rectangle(box, fill=HELD)
+        fills[button] = ImageChops.multiply(inside_cross, solid(box))
 
-
-def _face_buttons(draw: ImageDraw.ImageDraw, held: Button) -> None:
     x, y = FACE_CENTRE
-    places = {
-        Button.X: (x, y - FACE_GAP),
-        Button.A: (x + FACE_GAP, y),
-        Button.B: (x, y + FACE_GAP),
-        Button.Y: (x - FACE_GAP, y),
-    }
-    for button, (bx, by) in places.items():
-        box = (bx - FACE_RADIUS, by - FACE_RADIUS, bx + FACE_RADIUS, by + FACE_RADIUS)
-        _shape(draw, box, button in held, rounded=False)
+    faces = {Button.X: (x, y - FACE_GAP), Button.A: (x + FACE_GAP, y), Button.B: (x, y + FACE_GAP), Button.Y: (x - FACE_GAP, y)}
+    for button, (bx, by) in faces.items():
+        shape = solid((bx - FACE_RADIUS, by - FACE_RADIUS, bx + FACE_RADIUS, by + FACE_RADIUS), circle=True)
+        outlines.append(shape)
+        fills[button] = _shrink(shape, lines)
+    return outlines, fills
 
 
-def _speed(draw: ImageDraw.ImageDraw, width: int, speed: float) -> None:
-    if KMH_PER_SPEED_UNIT is None:
-        text = f"{speed:.2f} speed"
-    else:
-        text = f"{round(speed * KMH_PER_SPEED_UNIT)} km/h"
-    font = ImageFont.load_default(size=16)
-    draw.text((width - 6, SPEED_BOTTOM), text, font=font, fill=HELD, anchor="rd", stroke_width=2, stroke_fill=OUTLINE)
+def _scaled_size(scale: float) -> tuple[int, int]:
+    return round(TOP_SCREEN[0] * scale), round(TOP_SCREEN[1] * scale)
+
+
+def _line_widths(scale: float) -> tuple[int, int]:
+    """The black edge and white stroke widths in screen pixels, at least 1 each."""
+    return max(1, round(EDGE * scale)), max(1, round(STROKE * scale))
+
+
+def _shrink(mask: Image.Image, pixels: int) -> Image.Image:
+    """The shape with `pixels` taken off every edge."""
+    return mask.filter(ImageFilter.MinFilter(pixels * 2 + 1)) if pixels > 0 else mask
+
+
+@lru_cache(maxsize=256)
+def _text(text: str, pixel: int) -> Image.Image:
+    """The text in the blocky pixel font, `pixel` screen pixels per font pixel, white with a black edge."""
+    glyphs = [GLYPHS[character] for character in text]
+    width = sum(len(glyph[0]) + 1 for glyph in glyphs) - 1
+    border = max(1, pixel // 2)
+    shape = Image.new("L", (width * pixel + 2 * border, GLYPH_HEIGHT * pixel + 2 * border), 0)
+    draw = ImageDraw.Draw(shape)
+    x = 0
+    for glyph in glyphs:
+        for row, line in enumerate(glyph):
+            for column, mark in enumerate(line):
+                if mark == "#":
+                    left, top = border + (x + column) * pixel, border + row * pixel
+                    draw.rectangle((left, top, left + pixel - 1, top + pixel - 1), fill=255)
+        x += len(glyph[0]) + 1
+    words = Image.new("RGBA", shape.size, CLEAR)
+    words.paste(BLACK, mask=shape.filter(ImageFilter.MaxFilter(border * 2 + 1)))
+    words.paste(WHITE, mask=shape)
+    return words
+
+
+# A blocky font with 2-pixel-wide strokes, like the record clips' speedometer. Each row is one line of pixels.
+GLYPHS = {
+    "0": [".####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
+    "1": ["..##..", ".###..", "..##..", "..##..", "..##..", "..##..", "..##..", ".####."],
+    "2": [".####.", "##..##", "....##", "...##.", "..##..", ".##...", "##....", "######"],
+    "3": [".####.", "##..##", "....##", "..###.", "....##", "....##", "##..##", ".####."],
+    "4": ["...##.", "..###.", ".####.", "##.##.", "##.##.", "######", "...##.", "...##."],
+    "5": ["######", "##....", "##....", "#####.", "....##", "....##", "##..##", ".####."],
+    "6": [".####.", "##....", "##....", "#####.", "##..##", "##..##", "##..##", ".####."],
+    "7": ["######", "....##", "...##.", "...##.", "..##..", "..##..", ".##...", ".##..."],
+    "8": [".####.", "##..##", "##..##", ".####.", "##..##", "##..##", "##..##", ".####."],
+    "9": [".####.", "##..##", "##..##", "##..##", ".#####", "....##", "....##", ".####."],
+    ".": ["..", "..", "..", "..", "..", "..", "##", "##"],
+    " ": ["..", "..", "..", "..", "..", "..", "..", ".."],
+    "k": ["##....", "##....", "##..##", "##.##.", "####..", "##.##.", "##..##", "##..##"],
+    "m": ["........", "........", "#######.", "##.##.##", "##.##.##", "##.##.##", "##.##.##", "##.##.##"],
+    "/": ["....##", "....##", "...##.", "...##.", "..##..", ".##...", ".##...", "##...."],
+    "h": ["##....", "##....", "#####.", "##..##", "##..##", "##..##", "##..##", "##..##"],
+}
+GLYPH_HEIGHT = 8

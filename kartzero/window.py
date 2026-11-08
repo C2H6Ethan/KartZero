@@ -1,8 +1,12 @@
 """A resizable window that shows the game, scaled to fit. The emulator's own window can't stretch its picture."""
 
 import tkinter as tk
+from typing import Optional
 
 from PIL import Image, ImageTk
+
+from kartzero.buttons import Button
+from kartzero.overlay import draw_overlay
 
 TITLE = "KartZero"
 DS_WIDTH, DS_HEIGHT = 256, 384  # both screens, one above the other
@@ -21,16 +25,17 @@ class GameWindow:
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._picture = tk.Label(self._root, background="black", borderwidth=0)
         self._picture.place(relx=0.5, rely=0.5, anchor="center")
-        # Made after the picture, so it sits on top of it.
-        self._label = tk.Label(self._root, text="", font=("Segoe UI", 11), foreground="white", background="black")
         self._photo: ImageTk.PhotoImage | None = None  # tkinter needs this kept alive while it's shown
 
     @property
     def closed(self) -> bool:
         return self._closed
 
-    def show(self, image: Image.Image) -> None:
-        """Draw the image at the largest size that fits, and let the window respond to the mouse."""
+    def show(self, image: Image.Image, held: Optional[Button] = None, speed: float = 0.0) -> None:
+        """Draw the image at the largest size that fits, and let the window respond to the mouse.
+
+        With `held`, the held buttons and the speed are drawn on top, after scaling, so they stay sharp.
+        """
         if self._closed:
             return
         self._root.update()  # closing the window happens here, so check again before drawing
@@ -38,18 +43,17 @@ class GameWindow:
             return
         scale = min(self._root.winfo_width() / DS_WIDTH, self._root.winfo_height() / DS_HEIGHT)
         size = (max(1, round(DS_WIDTH * scale)), max(1, round(DS_HEIGHT * scale)))
-        self._photo = ImageTk.PhotoImage(image.resize(size, Image.Resampling.NEAREST))
+        picture = image.resize(size, Image.Resampling.NEAREST)
+        if held is not None:
+            picture = draw_overlay(picture, held, speed, scale)
+        self._photo = ImageTk.PhotoImage(picture)
         self._picture.configure(image=self._photo)
 
     def set_label(self, text: str) -> None:
-        """Show a small line of text in the top-left corner, or hide it with an empty text."""
+        """Show a short text in the window's title bar, so it never covers the game, or clear it."""
         if self._closed:
             return
-        self._label.configure(text=text)
-        if text:
-            self._label.place(x=6, y=6, anchor="nw")
-        else:
-            self._label.place_forget()
+        self._root.title(f"{TITLE}  {text}" if text else TITLE)
 
     def close(self) -> None:
         if not self._closed:
