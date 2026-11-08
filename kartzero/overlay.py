@@ -16,11 +16,11 @@ from kartzero.buttons import Button
 
 TOP_SCREEN = (256, 192)
 
-# Speed is shown the way world record clips show it, so the two can be compared: 114 km/h at the
-# kart's normal top speed, never more, even in a boost. Below top speed it's the real share of it, so
-# being slower than the kart can go, like off-road or after a crash, shows as a lower number.
-KMH_AT_TOP_SPEED = 114
-TOP_SPEED = 7.72  # measured top speed of Dry Bones in the ROB-BLS, without a boost
+# Speed is shown so it can be compared with world record clips: 114 km/h at full boost speed. Record
+# runs boost almost non-stop, so their number sits near 114. Anything slower shows as its real share
+# of that: our kart at full speed without a boost (7.72) shows 88 km/h.
+KMH_AT_BOOST_SPEED = 114
+BOOST_SPEED = 10.04  # measured speed of Dry Bones in the ROB-BLS during a mini-turbo or a mushroom
 
 # Positions on the 256 x 192 top screen, in DS pixels, measured from a record clip.
 SHOULDERS = {Button.L: (5, 151, 31, 157), Button.R: (40, 151, 66, 157)}
@@ -55,8 +55,8 @@ def draw_overlay(image: Image.Image, held: Button, speed: float, scale: float) -
 
 
 def shown_kmh(speed: float) -> int:
-    """The km/h to show for a speed in the game's units: its share of top speed, with 114 at the top."""
-    return round(KMH_AT_TOP_SPEED * min(speed / TOP_SPEED, 1.0))
+    """The km/h to show for a speed in the game's units: its share of boost speed, which shows 114."""
+    return round(KMH_AT_BOOST_SPEED * speed / BOOST_SPEED)
 
 
 @lru_cache(maxsize=64)

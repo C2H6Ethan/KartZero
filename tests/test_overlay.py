@@ -51,8 +51,8 @@ def test_the_bottom_screen_and_the_original_are_left_alone():
     assert original.getextrema() == ((0, 0), (0, 0), (0, 0))
 
 
-def test_km_h_is_the_share_of_top_speed_and_stops_at_114():
+def test_km_h_shows_114_at_boost_speed_and_less_without_a_boost():
     assert shown_kmh(0.0) == 0
-    assert shown_kmh(3.86) == 57  # half of top speed
-    assert shown_kmh(7.72) == 114
-    assert shown_kmh(10.04) == 114  # a boost doesn't go higher, like the record clips
+    assert shown_kmh(10.04) == 114  # boosting, like the record clips
+    assert shown_kmh(7.72) == 88  # full speed without a boost
+    assert shown_kmh(5.02) == 57  # half of boost speed
