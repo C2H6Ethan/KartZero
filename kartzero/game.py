@@ -3,15 +3,15 @@
 import ctypes
 import sys
 import time
-from enum import IntFlag
 from pathlib import Path
 from types import TracebackType
 from typing import Optional, Self, Union
 
-from desmume.controls import Keys, keymask
 from desmume.emulator import DeSmuME
 
+from kartzero.buttons import Button
 from kartzero.kart import Kart
+from kartzero.overlay import draw_overlay
 from kartzero.track import Track
 from kartzero.window import GameWindow
 
@@ -25,20 +25,6 @@ JIT_BLOCK_SIZE_DISTANCE = 3
 JIT_DEFAULT_BLOCK_SIZE = 12
 
 FilePath = Union[str, Path]
-
-
-class Button(IntFlag):
-    """The DS buttons. Combine them with |, as in Button.A | Button.LEFT."""
-
-    NONE = 0
-    A = keymask(Keys.KEY_A)
-    B = keymask(Keys.KEY_B)
-    L = keymask(Keys.KEY_L)
-    R = keymask(Keys.KEY_R)
-    UP = keymask(Keys.KEY_UP)
-    DOWN = keymask(Keys.KEY_DOWN)
-    LEFT = keymask(Keys.KEY_LEFT)
-    RIGHT = keymask(Keys.KEY_RIGHT)
 
 
 class Game:
@@ -56,6 +42,7 @@ class Game:
         self.track = Track(self._emulator.memory)
         self._window: Optional[GameWindow] = None
         self._next_frame_time = 0.0
+        self._held = Button.NONE  # shown in the window's overlay
 
     def _enable_jit(self) -> None:
         """Run the game's code as compiled code, about 1.8 times faster with identical results.
@@ -122,6 +109,7 @@ class Game:
     def hold(self, buttons: Button) -> None:
         """Hold exactly these buttons until told otherwise."""
         self._emulator.input.keypad_update(int(buttons))
+        self._held = buttons
 
     def advance(self, frames: int = 1, draw: bool = False) -> None:
         """Run the game forward. Skipping the drawing is much faster."""
@@ -135,7 +123,7 @@ class Game:
 
     def _advance_in_window(self, window: GameWindow) -> None:
         self._emulator.cycle(with_joystick=False)
-        window.show(self._emulator.screenshot())
+        window.show(draw_overlay(self._emulator.screenshot(), self._held, self.kart.speed()))
         self._next_frame_time = max(self._next_frame_time, time.perf_counter() - WATCH_FRAME_SECONDS)
         self._next_frame_time += WATCH_FRAME_SECONDS
         time.sleep(max(0.0, self._next_frame_time - time.perf_counter()))
