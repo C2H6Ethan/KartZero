@@ -210,6 +210,8 @@ Night checks:
 - 01:45: seed 1 at 5.93M: 1:35.68 with 48 (at 7h56m), also under the staff ghost, and 1:37.06 to 1:40.79 with 43 to 48 since. Best still 1:34.47. Seed 2 at 4.68M: 1:40.19 with 44, best still 1:38.16.
 - 02:40: seed 1 at 6.67M: 1:36.72, 1:36.96 and 1:37.23 with **50 to 51** mini-turbos, a steady run near the staff ghost's time. Best still 1:34.47. Seed 2 at 5.43M: **1:37.49 with 47**, a new best, and 1:38.07 with 38 (one lap at 6h50m didn't finish).
 - 03:36: seed 1 at 7.51M: **new best 1:33.83 with 51** (at 10h23m, `0010h23m_000007510016_decisions.pt`), after 1:36.61 with 49, and up to **54** mini-turbos in one lap (1:37.20). Seed 2 at 6.11M: 43 to 51 per lap, 1:39 to 1:41, with one slip to 1:51.71, best still 1:37.49.
+- 04:31: seed 1 at 8.20M: 1:35.54 with 51 and 1:34.02 with **55**, best still 1:33.83. Seed 2 at 6.87M: **1:34.24 with 50**, also under the staff ghost, and 1:36.86 with 48. Both seeds now beat the staff ghost.
+- 05:26: seed 1 at 8.70M dipped: 1:47.14 with 55 and 1:46.28 with **60**, the most mini-turbos yet but slow laps, so another wave down. Best still 1:33.83. Seed 2 at 7.51M: 1:35.01 with 57 and 1:36.17 with 51, best still 1:34.24.
 
 Next steps, in order:
 1. Carry out item 18.
