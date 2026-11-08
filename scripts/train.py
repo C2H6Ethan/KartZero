@@ -1,7 +1,7 @@
 """Train the AI on Figure-8. Closing the viewer window stops training and saves its progress.
 
 Usage: python scripts/train.py [--resume] [--minutes N] [--seed N] [--no-viewer] [--emulators N]
-    [--decisions-per-chunk N] [--sticky-chance P] [--hold-lengths]
+    [--decisions-per-chunk N] [--learning-rate R] [--sticky-chance P] [--hold-lengths]
     [--curiosity-weight W] [--curiosity-fade-decisions N] [--curiosity-learning-rate R] [--exploration-weight W] [--advantage-blend L] [--start-from VERSION] [--checkpoint FILE] [--name NAME]
 Run make_start_state.py first.
 """
@@ -27,6 +27,7 @@ def main() -> None:
     parser.add_argument("--no-viewer", action="store_true")
     parser.add_argument("--emulators", type=int, default=8)
     parser.add_argument("--decisions-per-chunk", type=int, default=256)
+    parser.add_argument("--learning-rate", type=float, default=3e-4, help="how big each learning step is")
     parser.add_argument("--sticky-chance", type=float, default=0.0, help="practice only: chance to repeat the last button")
     parser.add_argument("--hold-lengths", action="store_true", help="the AI also picks how long to hold each half")
     parser.add_argument("--curiosity-weight", type=float, default=0.0, help="bonus for reaching new moments, 0 is off")
@@ -48,6 +49,7 @@ def main() -> None:
         seed=arguments.seed,
         emulators=arguments.emulators,
         decisions_per_chunk=arguments.decisions_per_chunk,
+        learning_rate=arguments.learning_rate,
         sticky_chance=arguments.sticky_chance,
         hold_lengths=arguments.hold_lengths,
         curiosity_weight=arguments.curiosity_weight,
