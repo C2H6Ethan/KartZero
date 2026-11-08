@@ -6,7 +6,7 @@ Where the project stands, and everything we've measured and decided. Last update
 
 ## Where we are now
 
-**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and overnight on 7 to 8 November a curiosity-trained AI **beat the staff ghost**, and by the morning of 8 November its best test lap was **1:32.65 with 50 mini-turbos**, 4.8 seconds off MarI/O Kart. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
+**Stage: getting the AI to discover mini-turbos.** Curiosity (a bonus for reaching rarely seen moments) made it discover mini-turbos, and overnight on 7 to 8 November a curiosity-trained AI **beat the staff ghost**, and on 8 November its best test lap reached **1:31.85 with 52 mini-turbos** (seed 2), 4.0 seconds off MarI/O Kart. See "Mini-turbo experiments" below. Earlier: **second training run, without reverse.** The first run learned to turn around and drive the track in reverse. In a replay it was reversing 99.2% of the time at speed -3, with no forward driving above speed 5. That earned points because the kart still moved the right way along the track, and it explains why progress stopped rising at about 80%: 200 seconds in reverse only covers about 79% of a race. So the reverse button was removed and training restarted from nothing.
 
 **Official times come from test laps.** Each saved version gets one race with no exploration, always the likeliest button, in `runs/<run>/versions/test_laps.csv`. `watch.py --list` shows them. A separate process runs them, so training doesn't wait, and any untested versions get tested on the next `--resume`. Practice can mislead: the first AI reached 80% with dice rolls but just held reverse on top picks. The live viewer rolls the dice, so it shows practice, not test results.
 
@@ -228,6 +228,8 @@ Night checks:
 
 Next steps, in order:
 1. Keep training both seeds with `--resume` (same settings: 4 emulators, 512 decisions per chunk, curiosity 0.3, student rate 0.000025, hold lengths, GAE 0.95). Neither had levelled off. **Running from 07:02 on 8 November, for up to 10 hours:** seed 1 from 9.62M decisions, seed 2 from 8.35M.
+   - 08:00: seed 1 at 10.09M: 1:43.52 with 47, then 1:34.35 with 57. Seed 2 at 8.97M: 1:40.14 with 42, then 1:33.85 with 49. No new bests yet. Versions now come about every 20 minutes per run (the 3% rule at this size).
+   - 08:59: **seed 2 new best: 1:31.85 with 52** (at 12h54m, 9.51M decisions, `0012h54m_000009512960_decisions.pt`), after 1:32.21 with 51. Seed 1 at 11.03M is the steadiest it has been: 1:33.43 to 1:34.35 with 52 to 58 on its last four laps.
 2. Check with `scripts/watch.py --list RUN` and judge by best and recent test laps, not the newest one, because they swing in waves.
 3. Try a few curiosity weights and student speeds, since 0.3 and 0.000025 were guesses that happened to work.
 4. Rebuild the curiosity bonus as a learning exercise, with failing tests first (see "How we work"): it was written fast during the experiments.
@@ -238,7 +240,7 @@ Beat **1:27.832** on Figure-8 Circuit self-taught.
 
 | Order | Target | Time | Source |
 |---:|---|---:|---|
-| 1 | Staff ghost, **beaten 8 November: best so far 1:32.65** | 1:36.481 | Shown in the game |
+| 1 | Staff ghost, **beaten 8 November: best so far 1:31.85** | 1:36.481 | Shown in the game |
 | 2 | **MarI/O Kart, the main goal** | 1:27.832 | Its video: laps 29.717, 29.107, 29.008, with 73 mini-turbos |
 | 3 | My best time | 1:23.013, best lap 27.158 | My save. I don't know if it used the mushroom |
 | 4 | Human record, stretch only | 1:11.387 | mkwrs, Taiga, 19 April 2024. Other sites list 1:11.510 and 1:11.625, so recheck before quoting it |
