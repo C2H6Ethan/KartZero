@@ -102,8 +102,8 @@ class Kart:
         return self.race_progress() >= FINISH_PROGRESS
 
     def race_clock(self) -> float:
-        """The race time shown on screen, in seconds. It starts in the countdown, about 2.4 s
-        before the kart can move, and keeps running after the finish."""
+        """The race time shown on screen, in seconds. It reads 0 through the countdown, starts at
+        GO, counts 60 frames as a second, and keeps running after the finish."""
         clock = self._memory.unsigned.read_long(RACE_STATUS_PTR_ADDR) + RACE_CLOCK_OFFSET
         minutes = self._memory.unsigned.read_byte(clock + race_time_t.minutes.offset)
         seconds = self._memory.unsigned.read_byte(clock + race_time_t.seconds.offset)
