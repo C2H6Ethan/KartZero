@@ -2,18 +2,18 @@
 
 from multiprocessing.connection import Connection
 
-from kartzero.environment import RaceEnvironment
+from kartzero.environment import MAX_DECISIONS_PER_RACE, RaceEnvironment
 from kartzero.game import Game
 from kartzero.holds import HoldEnvironment
 from kartzero.sensors import TrackSensors
 from kartzero.settings import Settings
 
 
-def run_worker(connection: Connection, settings: Settings, seed: int = 0) -> None:
+def run_worker(connection: Connection, settings: Settings, seed: int = 0, max_decisions: int = MAX_DECISIONS_PER_RACE) -> None:
     """Receive an action, send back what happened. A new race starts by itself when one ends."""
     with Game() as game:
         game.load_snapshot()
-        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()), settings.sticky_chance, seed)
+        race = RaceEnvironment(game, TrackSensors(game.track.collision_triangles()), settings.sticky_chance, seed, max_decisions)
         environment = HoldEnvironment(race) if settings.hold_lengths else race
         connection.send(environment.reset())
         while True:

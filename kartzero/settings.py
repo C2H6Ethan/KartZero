@@ -22,6 +22,10 @@ class Settings:
     curiosity_weight: float = 0.0  # a bonus for reaching moments it rarely sees, 0 is off, see curiosity.py
     curiosity_fade_decisions: int = 0  # lower the curiosity weight to 0 over this many decisions, 0 is never
     curiosity_learning_rate: float = 1e-4  # how fast moments become familiar: slower keeps them new for longer
+    # Practice only: this many emulators drive short races that end soon after GO, so the AI gets far
+    # more tries at the start. The rest drive full races, so it keeps practising the whole track.
+    start_practice_emulators: int = 0
+    start_practice_decisions: int = 75  # 44 in the countdown, then about 2 s of racing
     start_from: str = ""  # a saved version to start from, instead of an untrained network
 
 

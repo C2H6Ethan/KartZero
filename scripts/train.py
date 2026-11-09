@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--curiosity-learning-rate", type=float, default=1e-4, help="slower keeps moments new for longer")
     parser.add_argument("--exploration-weight", type=float, default=0.01, help="how much to reward keeping options open")
     parser.add_argument("--advantage-blend", type=float, default=1.0, help="GAE's lambda: 1 is off, 0.95 is common")
+    parser.add_argument("--start-practice-emulators", type=int, default=0, help="this many emulators practise only the start")
+    parser.add_argument("--start-practice-decisions", type=int, default=75, help="how long a start-practice race lasts")
     parser.add_argument("--start-from", default="", help="a saved version file to start from")
     parser.add_argument("--checkpoint", type=Path, default=LATEST_CHECKPOINT, help="where to save, and resume from")
     parser.add_argument("--name", default="", help="added to the run folder's name")
@@ -57,6 +59,8 @@ def main() -> None:
         curiosity_learning_rate=arguments.curiosity_learning_rate,
         exploration_weight=arguments.exploration_weight,
         advantage_blend=arguments.advantage_blend,
+        start_practice_emulators=arguments.start_practice_emulators,
+        start_practice_decisions=arguments.start_practice_decisions,
         start_from=arguments.start_from,
     )
     run_training(settings, arguments.minutes, viewer, arguments.resume, arguments.checkpoint, arguments.name)

@@ -152,6 +152,17 @@ def test_the_race_ends_as_out_of_time_at_the_limit():
     assert step.out_of_time and not step.finished
 
 
+def test_a_shorter_time_limit_ends_the_race_sooner():
+    game = FakeGame(0.0)
+    environment = RaceEnvironment(game, FakeSensors(), max_decisions=5)
+    environment.reset()
+    for _ in range(4):
+        assert not environment.step(0).out_of_time
+    assert environment.step(0).out_of_time
+    environment.reset()
+    assert not environment.step(0).out_of_time  # the limit counts from each new race
+
+
 def test_without_stickiness_every_pick_is_held():
     game, environment = make_environment(sticky_chance=0.0)
     environment.reset()

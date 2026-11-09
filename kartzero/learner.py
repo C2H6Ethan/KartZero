@@ -16,7 +16,7 @@ import numpy as np
 import torch
 
 from kartzero.curiosity import Curiosity, faded_weight
-from kartzero.environment import DECISIONS_PER_SECOND, STEERINGS, Step
+from kartzero.environment import DECISIONS_PER_SECOND, MAX_DECISIONS_PER_RACE, STEERINGS, Step
 from kartzero.game import ROOT
 from kartzero.holds import layout_for
 from kartzero.network import VALUE_SCALE, DriverNetwork, network_state
@@ -110,6 +110,16 @@ def chunk_advantages(
     return result
 
 
+def practises_starts(settings: Settings, emulator: int) -> bool:
+    """Whether this emulator drives short start-practice races. The first few do, the rest race in full."""
+    return emulator < settings.start_practice_emulators
+
+
+def race_limit(settings: Settings, emulator: int) -> int:
+    """How many decisions this emulator's practice races may last."""
+    return settings.start_practice_decisions if practises_starts(settings, emulator) else MAX_DECISIONS_PER_RACE
+
+
 class Recording:
     """One emulator's chunk of driving."""
 
@@ -163,6 +173,7 @@ class Trainer:
             self.earlier_seconds = saved["seconds"]
         self._learner.load_state_dict(self._driver.state_dict())
         self._race_end_progress: list[float] = []
+        self._start_practice_progress: list[float] = []  # where each start-practice race got to
         self._curiosity = None
         if settings.curiosity_weight:
             self._curiosity = Curiosity(
@@ -185,7 +196,10 @@ class Trainer:
             ours, theirs = mp.Pipe()
             # A different sticky seed per emulator, so they don't all repeat at the same moments.
             seed = settings.seed * 1000 + index
-            worker = mp.get_context("spawn").Process(target=run_worker, args=(theirs, settings, seed), daemon=True)
+            limit = race_limit(settings, index)
+            worker = mp.get_context("spawn").Process(
+                target=run_worker, args=(theirs, settings, seed, limit), daemon=True
+            )
             worker.start()
             self._connections.append(ours)
             self._workers.append(worker)
@@ -256,7 +270,10 @@ class Trainer:
                     recording.pedals_used.append(not step.pedal_ignored)
                     recording.steerings_used.append(not step.steering_ignored)
                     recording.boosts += step.boost_started
-                    self._note_race_end(step)
+                    if not practises_starts(self._settings, index):  # short races would skew race statistics
+                        self._note_race_end(step)
+                    elif step.out_of_time:
+                        self._start_practice_progress.append(step.progress)
                 self._observations = np.stack([next_observation for _, next_observation in results])
                 self._total_decisions += count
         return recordings
@@ -337,20 +354,28 @@ class Trainer:
         self._race_end_progress = []
         if ended:
             self._last_end_progress = float(np.mean(ended))
-        practice_minutes = len(actions) / DECISIONS_PER_SECOND / 60
+        # The log describes full races only. Start practice is mostly countdown, which would skew it.
+        full_races = [r for i, r in enumerate(recordings) if not practises_starts(self._settings, i)]
+        full_observations = torch.as_tensor(np.concatenate([r.observations for r in full_races]))
+        practice_minutes = sum(len(r.actions) for r in full_races) / DECISIONS_PER_SECOND / 60
+        starts = self._start_practice_progress
+        self._start_practice_progress = []
         return {
             "decisions": float(self._total_decisions),
             # Includes any boost from a start-line rocket start.
-            "boosts_per_minute": sum(r.boosts for r in recordings) / practice_minutes,
+            "boosts_per_minute": sum(r.boosts for r in full_races) / practice_minutes,
             "picks_ignored": 1 - float(picks_used.float().mean()),
             # For watching only, never for the reward: how close practice gets to a mini-turbo. The
             # count goes 1, 2, then straight to 4, where letting go of R fires the boost.
-            "share_at_count_2": _share_at_count(observations, 2),
-            "share_at_count_4": _share_at_count(observations, 4),
-            "average_reward": float(np.mean([reward for r in recordings for reward in r.rewards])),
+            "share_at_count_2": _share_at_count(full_observations, 2),
+            "share_at_count_4": _share_at_count(full_observations, 4),
+            "average_reward": float(np.mean([reward for r in full_races for reward in r.rewards])),
             "races_ended": float(len(ended)),
             "average_end_progress": float(np.mean(ended)) if ended else float("nan"),
             "finishes": float(self._finishes),
+            # Progress at the end of start-practice races, 2 s after GO in the countdown setup: about
+            # 0.0198 with the full start boost, 0.0051 with a plain start, and about 0 with a stall.
+            "start_practice_progress": float(np.mean(starts)) if starts else float("nan"),
             "best_seconds": self._best_seconds if self._best_seconds is not None else float("nan"),
             "guess_error": last_guess_error,
             "ratio_gap": last_ratio_gap,

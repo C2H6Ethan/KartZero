@@ -54,15 +54,24 @@ class RaceEnvironment:
 
     With a `sticky_chance` above 0, each decision has that chance of repeating the last button
     instead of the pick. That makes long holds, like the ones a mini-turbo needs, far more common
-    in practice. Test laps use 0.
+    in practice. Test laps use 0. A lower `max_decisions` makes short practice races, such as start
+    practice. Test laps always use the full limit.
     """
 
-    def __init__(self, game: Game, sensors: TrackSensors, sticky_chance: float = 0.0, seed: int = 0) -> None:
+    def __init__(
+        self,
+        game: Game,
+        sensors: TrackSensors,
+        sticky_chance: float = 0.0,
+        seed: int = 0,
+        max_decisions: int = MAX_DECISIONS_PER_RACE,
+    ) -> None:
         self._game = game
         self._sensors = sensors
         self._reward = Reward()
         self._random = random.Random(seed)
         self.sticky_chance = sticky_chance
+        self.max_decisions = max_decisions  # the race stops here, out of time, if it hasn't finished
         self._progress = 0.0
         self._decisions = 0
         self._last_action = 0  # Button.NONE
@@ -100,7 +109,7 @@ class RaceEnvironment:
             observation=self._observe(buttons),
             reward=reward,
             finished=finished,
-            out_of_time=not finished and self._decisions >= MAX_DECISIONS_PER_RACE,
+            out_of_time=not finished and self._decisions >= self.max_decisions,
             progress=progress,
             decisions=self._decisions,
             pedal_ignored=pick_ignored,

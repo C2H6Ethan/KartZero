@@ -5,7 +5,9 @@ import pytest
 import torch
 
 from kartzero.environment import ACTIONS, OBSERVATION_SIZE
-from kartzero.learner import chunk_advantages, chunk_points, policy_score
+from kartzero.environment import MAX_DECISIONS_PER_RACE
+from kartzero.learner import chunk_advantages, chunk_points, policy_score, practises_starts, race_limit
+from kartzero.settings import Settings
 from kartzero.network import DriverNetwork
 
 
@@ -163,3 +165,15 @@ def test_every_training_session_is_recorded(tmp_path):
     assert [s["code_version"] for s in sessions] == ["abc", "def+uncommitted"]
     assert [s["settings"]["emulators"] for s in sessions] == [4, 8]
     assert sessions[1]["from_decisions"] == 1_000_000
+
+
+def test_without_start_practice_every_emulator_drives_full_races():
+    settings = Settings()
+    assert not any(practises_starts(settings, emulator) for emulator in range(settings.emulators))
+    assert all(race_limit(settings, emulator) == MAX_DECISIONS_PER_RACE for emulator in range(settings.emulators))
+
+
+def test_the_first_emulators_practise_short_starts_and_the_rest_drive_full_races():
+    settings = Settings(emulators=8, start_practice_emulators=2, start_practice_decisions=75)
+    assert [practises_starts(settings, emulator) for emulator in range(8)] == [True, True] + [False] * 6
+    assert [race_limit(settings, emulator) for emulator in range(8)] == [75, 75] + [MAX_DECISIONS_PER_RACE] * 6
