@@ -89,12 +89,28 @@ def test_used_log_odds_pick_the_half_that_was_used():
 def test_a_saved_brain_loads_with_its_own_sizes(tmp_path):
     from kartzero.network import DriverNetwork, load_driver
 
-    network = DriverNetwork(37, 324)
+    network = DriverNetwork(38, 324)
     torch.save({"network": network.state_dict()}, tmp_path / "brain.pt")
     loaded = load_driver(tmp_path / "brain.pt")
-    assert (loaded.inputs, loaded.actions) == (37, 324)
-    observation = torch.randn(1, 37)
+    assert (loaded.inputs, loaded.actions) == (38, 324)
+    observation = torch.randn(1, 38)
     assert torch.equal(loaded(observation)[0].logits, network(observation)[0].logits)
+
+
+def test_a_brain_from_before_the_countdown_gets_it_with_no_effect(tmp_path):
+    from kartzero.environment import COUNTDOWN_INPUT
+    from kartzero.network import DriverNetwork, load_driver
+
+    old = DriverNetwork(37, 324)  # 35 inputs, then 2 for hold lengths
+    torch.save({"network": old.state_dict()}, tmp_path / "brain.pt")
+    loaded = load_driver(tmp_path / "brain.pt")
+    assert loaded.inputs == 38
+    old_numbers = torch.randn(1, 37)
+    with_countdown = torch.cat([old_numbers[:, :COUNTDOWN_INPUT], torch.tensor([[0.9]]), old_numbers[:, COUNTDOWN_INPUT:]], dim=1)
+    odds, guess = loaded(with_countdown)
+    old_odds, old_guess = old(old_numbers)
+    assert torch.allclose(odds.logits, old_odds.logits, atol=1e-6)
+    assert torch.allclose(guess, old_guess, atol=1e-5)
 
 
 def test_newness_of_compares_chosen_moments_with_all_of_them():

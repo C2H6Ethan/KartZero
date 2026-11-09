@@ -14,7 +14,7 @@ import torch
 
 from kartzero.environment import ACTIONS, OBSERVATION_SIZE, RaceEnvironment
 from kartzero.game import Game
-from kartzero.network import DriverNetwork
+from kartzero.network import DriverNetwork, network_state
 from kartzero.runs import TrainingRun, find_run
 from kartzero.sensors import TrackSensors
 from kartzero.test_lap import drive_test_lap
@@ -33,7 +33,7 @@ def retime(run: TrainingRun, environment: RaceEnvironment, network: DriverNetwor
     for number, version in enumerate(versions, 1):
         if version.file.name in done:
             continue
-        network.load_state_dict(torch.load(version.file, map_location="cpu")["network"])
+        network.load_state_dict(network_state(version.file))
         result = drive_test_lap(network, environment)
         run.versions.save_test_lap(version.file, result)
         print(f"{run.name} {number}/{len(versions)} {version.file.name}: {result.description()}", flush=True)

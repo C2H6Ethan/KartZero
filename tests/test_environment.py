@@ -88,9 +88,12 @@ class FakeGame:
         self.held = []
         self.progress_per_decision = progress_per_decision
 
-    def start_race(self, buttons):
+    def start_countdown(self):
         self.kart.snapshot_loaded = True
         self.kart.progress = 0.0
+
+    def seconds_until_go(self):
+        return 1.5
 
     def hold(self, buttons):
         self.held.append(buttons)

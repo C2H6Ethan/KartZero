@@ -19,7 +19,7 @@ from kartzero.curiosity import Curiosity, faded_weight
 from kartzero.environment import DECISIONS_PER_SECOND, STEERINGS, Step
 from kartzero.game import ROOT
 from kartzero.holds import layout_for
-from kartzero.network import VALUE_SCALE, DriverNetwork
+from kartzero.network import VALUE_SCALE, DriverNetwork, network_state
 from kartzero.observation import MINI_TURBO_SCALE
 from kartzero.settings import Settings
 from kartzero.test_lap import run_lap_tester
@@ -143,7 +143,7 @@ class Trainer:
         self._layout = layout_for(settings)
         self._driver = DriverNetwork(self._layout.inputs, self._layout.actions)
         if settings.start_from and not saved:
-            self._driver.load_state_dict(torch.load(settings.start_from, map_location="cpu")["network"])
+            self._driver.load_state_dict(network_state(Path(settings.start_from)))
         self._learner = DriverNetwork(self._layout.inputs, self._layout.actions).to(self._device)
         self._optimizer = torch.optim.Adam(self._learner.parameters(), lr=settings.learning_rate)
         self._run_folder = run_folder

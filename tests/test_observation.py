@@ -95,7 +95,7 @@ class FakeSensors:
 
 @pytest.fixture
 def numbers():
-    return observe(FakeKart(), FakeTrack(), FakeSensors(), Button.A | Button.R)
+    return observe(FakeKart(), FakeTrack(), FakeSensors(), Button.A | Button.R, seconds_until_go=1.5)
 
 
 def test_the_type_is_what_the_network_needs(numbers):
@@ -120,8 +120,12 @@ def test_distances_are_scaled(numbers):
 
 
 def test_checkpoints_ahead_wrap_around_the_end_of_the_lap(numbers):
-    assert numbers[15:] == pytest.approx([0.1, 0.0, 0.2, 0.5, 0.4, -0.5])
+    assert numbers[15:21] == pytest.approx([0.1, 0.0, 0.2, 0.5, 0.4, -0.5])
+
+
+def test_the_countdown_comes_last(numbers):
+    assert numbers[21] == pytest.approx(0.5)  # 1.5 s until GO / 3
 
 
 def test_nothing_extra_is_included(numbers):
-    assert len(numbers) == 21
+    assert len(numbers) == 22

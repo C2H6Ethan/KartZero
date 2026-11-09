@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parent.parent
 ROM = ROOT / "game" / "mkds.nds"
 SAVE = ROOT / "game" / "mkds.sav"
 SNAPSHOT = ROOT / "savestates" / "f8c_time_trial.dst"
+# The snapshot is saved in the countdown, this many frames before GO (when the race clock starts and
+# the kart can first move). 178 frames is about 3 seconds, so the AI sees the whole countdown and can
+# learn the start boost. It's 2 more than a multiple of 4, so one decision (every 4 frames) always
+# starts inside the best start-boost window, 1.82 to 1.80 s before GO.
+FRAMES_BEFORE_GO = 178
 WATCH_FRAME_SECONDS = 1 / 60
 MAX_FRAMES_NOT_SHOWN = 3  # when drawing can't keep up, still show at least every 4th frame
 MAX_SECONDS_BEHIND = 0.25
@@ -45,6 +50,7 @@ class Game:
         self._next_frame_time = 0.0
         self._held = Button.NONE  # shown in the window's overlay
         self._frames_not_shown = 0
+        self._frames_since_start: Optional[int] = None  # counted from loading the race snapshot
 
     def _enable_jit(self) -> None:
         """Run the game's code as compiled code, about 1.8 times faster with identical results.
@@ -83,18 +89,31 @@ class Game:
 
     def load_snapshot(self, snapshot: FilePath = SNAPSHOT) -> None:
         self._emulator.savestate.load_file(str(snapshot))
+        # Only the race snapshot has a known place in the countdown.
+        self._frames_since_start = 0 if Path(snapshot) == SNAPSHOT else None
 
     def save_snapshot(self, snapshot: FilePath = SNAPSHOT) -> None:
         Path(snapshot).parent.mkdir(exist_ok=True)
         self._emulator.savestate.save_file(str(snapshot))
 
-    def start_race(self, buttons: Button = Button.A) -> None:
-        """Load the snapshot and run to the first frame the kart can move, then hold these buttons."""
+    def start_countdown(self) -> None:
+        """Load the snapshot, in the countdown about 3 seconds before GO, with nothing held."""
         self.load_snapshot()
-        self.hold(Button.A)
-        while self.kart.speed() <= 0:
-            self.advance()
+        self.hold(Button.NONE)
+
+    def start_race(self, buttons: Button = Button.A) -> None:
+        """Wait out the countdown with nothing held, then hold these buttons from the first frame the
+        kart can move. No start boost, and no stall from pressing A too early."""
+        self.start_countdown()
+        self.advance(FRAMES_BEFORE_GO - 1)
         self.hold(buttons)
+
+    def seconds_until_go(self) -> float:
+        """How long until the race clock starts and the kart can move, as the countdown on screen
+        shows. 0 once the race is on, or after loading any other snapshot."""
+        if self._frames_since_start is None:
+            return 0.0
+        return max(0, FRAMES_BEFORE_GO - self._frames_since_start) / 60
 
     def open_window(self) -> None:
         """Show the game in a window. It then runs at normal speed, so this is only for watching."""
@@ -115,6 +134,8 @@ class Game:
 
     def advance(self, frames: int = 1, draw: bool = False) -> None:
         """Run the game forward. Skipping the drawing is much faster."""
+        if self._frames_since_start is not None:
+            self._frames_since_start += frames
         for _ in range(frames):
             if self._window:
                 self._advance_in_window(self._window)

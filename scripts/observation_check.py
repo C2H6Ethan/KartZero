@@ -42,7 +42,7 @@ def main() -> None:
             # Mix in drifting, so that the drift and boost inputs get used too.
             held = Button.A | Button.R if decisions % 200 < 40 else Button.A
             game.advance(FRAMES_PER_DECISION)
-            rows.append(observe(game.kart, game.track, sensors, held))
+            rows.append(observe(game.kart, game.track, sensors, held, game.seconds_until_go()))
             decisions += 1
         values = np.array(rows)
         print(f"\n{decisions} decisions, {values.shape[1]} inputs, expected {len(names)}, type {values.dtype}")
@@ -56,7 +56,7 @@ def main() -> None:
         start = time.perf_counter()
         for _ in range(TIMING_DECISIONS):
             game.advance(FRAMES_PER_DECISION)
-            observe(game.kart, game.track, sensors, Button.A)
+            observe(game.kart, game.track, sensors, Button.A, game.seconds_until_go())
         print(f"\nSpeed with inputs built every decision: {TIMING_DECISIONS * FRAMES_PER_DECISION / (time.perf_counter() - start):.0f} frames/s")
 
 

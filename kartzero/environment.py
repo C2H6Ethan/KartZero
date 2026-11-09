@@ -20,7 +20,8 @@ MAX_DECISIONS_PER_RACE = 3000  # 200 seconds, enough for the test driver's 2:08 
 PEDALS = (Button.NONE, Button.A, Button.A | Button.R)
 STEERINGS = (Button.NONE, Button.LEFT, Button.RIGHT)
 ACTIONS = tuple(pedal | steering for pedal in PEDALS for steering in STEERINGS)
-OBSERVATION_SIZE = 35
+OBSERVATION_SIZE = 36
+COUNTDOWN_INPUT = OBSERVATION_SIZE - 1  # the last input: seconds until GO
 
 
 @dataclass
@@ -38,8 +39,8 @@ class Step:
     pedal_ignored: bool = False
     steering_ignored: bool = False
     boost_started: bool = False
-    # The game's own time: its clock during the race, its official time at the finish. It's
-    # about 2.4 s more than decisions / DECISIONS_PER_SECOND, because the clock starts in the countdown.
+    # The game's own time: its clock during the race, its official time at the finish. It reads 0
+    # through the countdown, so it's about 3 s less than decisions / DECISIONS_PER_SECOND.
     race_seconds: float = 0.0
 
     @property
@@ -68,8 +69,8 @@ class RaceEnvironment:
         self._boost = 0
 
     def reset(self) -> np.ndarray:
-        """Start a new race and return the first numbers, read after the snapshot has loaded."""
-        self._game.start_race(Button.NONE)
+        """Start a new race in the countdown and return the first numbers, read after the snapshot has loaded."""
+        self._game.start_countdown()
         self._progress = self._game.kart.race_progress()
         self._decisions = 0
         self._last_action = 0
@@ -109,4 +110,4 @@ class RaceEnvironment:
         )
 
     def _observe(self, buttons: Button) -> np.ndarray:
-        return observe(self._game.kart, self._game.track, self._sensors, buttons)
+        return observe(self._game.kart, self._game.track, self._sensors, buttons, self._game.seconds_until_go())

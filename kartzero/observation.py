@@ -15,6 +15,7 @@ DRIFT_ANGLE_SCALE = 60.0  # measured full drift angle is about 60 degrees
 TURNING_SCALE = 300.0  # measured turning rate reached about 300
 MINI_TURBO_SCALE = 4.0  # a mini-turbo was ready at a count of 4
 BOOST_SCALE = 55.0  # a mini-turbo gave 55 frames of boost
+COUNTDOWN_SCALE = 3.0  # races start about 3 seconds before GO
 
 BUTTONS = (Button.A, Button.R, Button.LEFT, Button.RIGHT)
 CHECKPOINTS_AHEAD = (1, 2, 3)
@@ -42,7 +43,9 @@ def view_of_point(position: Vector3, heading: float, point: tuple[float, float])
     return (distance, angle)
 
 
-def observe(kart: Kart, track: Track, sensors: TrackSensors, held_buttons: Button) -> np.ndarray:
+def observe(
+    kart: Kart, track: Track, sensors: TrackSensors, held_buttons: Button, seconds_until_go: float
+) -> np.ndarray:
     """Build the numbers the AI receives, in exactly this order:
 
     1. speed / SPEED_SCALE
@@ -56,6 +59,7 @@ def observe(kart: Kart, track: Track, sensors: TrackSensors, held_buttons: Butto
     9. each wall distance / MAX_DISTANCE
     10. each road edge distance / MAX_DISTANCE
     11. for each of CHECKPOINTS_AHEAD: the distance to that checkpoint / MAX_DISTANCE, then its angle / pi
+    12. seconds until GO / COUNTDOWN_SCALE, as the countdown on screen shows, and 0 once the race is on
 
     Returns a numpy array of type float32.
     """
@@ -92,5 +96,7 @@ def observe(kart: Kart, track: Track, sensors: TrackSensors, held_buttons: Butto
 
         numbers.append(distance / MAX_DISTANCE)
         numbers.append(angle / math.pi)
+
+    numbers.append(seconds_until_go / COUNTDOWN_SCALE)
 
     return np.array(numbers, dtype=np.float32)
