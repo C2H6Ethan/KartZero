@@ -360,11 +360,17 @@ Only one `Game` can run per process. Tests in `tests/` use fake memory.
 - Also confirmed: the race clock (`race_status.time.lapTime`, shown on screen as TIME) and the official finish time (`totalMilliseconds` in our driver status). See "The race clock" below.
 
 **The race clock, measured.** Times were reported as decisions ÷ 15, which was too fast:
-- The game's clock starts in the countdown. When our snapshot lets the kart move, the screen already shows TIME 0:02:395, and the clock has run 145 frames (2.42 s). The kart moved at that same moment whether A was held through the countdown or pressed at any point from the clock's start, so it isn't a stall from pressing too early.
+- **Corrected 9 November:** the clock starts at GO, and the kart can move on the next frame. Our snapshot held A through the countdown, and holding A too early makes the kart stall until 2.40 s after GO. So the 2.42 s already on the clock when our kart first moved was that stall, not the countdown. I had concluded it wasn't a stall because pressing A later didn't help, but that test started from the snapshot, which was already stalled. See "The start" below.
 - Five test laps from different versions: the official time was 2.344 to 2.367 s more than ours, 2.356 s on average. That's the 2.42 s countdown, less our finish coming up to 4 frames late at the end of a decision.
 - **So all times now come from the game:** its official finish time at the line, or its clock if the race didn't finish. They match the times in the targets table, which come from the game's own screen. The reward is unchanged, because a fixed offset doesn't change which driving is faster.
 - `scripts/retime_test_laps.py` re-drives every version of a run to record official times, and keeps the old file as `test_laps_decision_clock.csv`.
 - Training logs written before this fix (`best_seconds` in `log.csv`) are still on the old clock.
+
+**The start, measured 9 November** (from the countdown, A pressed at different frames and then held, driving straight, the time on the clock when race progress reaches 0.01):
+- **A held from more than 1.83 s before GO** (frame 296 or earlier, GO at frame 407): a stall, the kart first moves at 2.40 s and reaches 0.01 at 5.243. **This is what every race of ours did so far.**
+- **A first pressed from 1.37 s before GO onwards, or at GO:** moves at once, reaches 0.01 at 2.839, so **2.40 s sooner**.
+- **A first pressed 1.82 to 1.80 s before GO (frames 297 to 299, a 3-frame window): a start boost**, 98 frames long at speed 10.04, reaching 0.01 at 1.135, so a further 1.70 s sooner. 1.78 to 1.73 s before GO gives a 48-frame boost (1.230), and shorter boosts follow until about 1.45 s before GO. One frame too early is the stall.
+- **The same brains from a no-stall start** (snapshot `savestates/f8c_time_trial_go.dst`, saved one frame before GO with nothing held, then A held like before): the 12h00m brain drove **1:24.50** (1:26.896 from the old start), the 11h24m one 1:24.63 (1:26.996), the 3h15m one 1:24.62 (1:27.019), and the 9h05m one 1:25.33 (1:26.864, its driving went differently). So all our times so far carried a 2.4 s handicap that MarI/O Kart didn't have (its first lap was only 0.61 s slower than its second). The start boost isn't learnable yet: the AI starts after the countdown and has no countdown input.
 
 **Sensors, tested on the game:**
 - Wall sensor: 4 crashes all read 10.5 to 10.8 on the nearest wall, which is the kart's size. It never read a wall touching the kart in a race with no crashes. The thin wall pieces above the road don't block it.
