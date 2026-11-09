@@ -2,6 +2,8 @@
 
 It rolls the dice on the odds, just as training does, so you see what the AI is really practising.
 Always picking the single likeliest button can look far worse while the odds are still spread out.
+With `test_lap`, it picks the likeliest button instead, exactly like an official test lap, so it
+replays that version's test lap.
 """
 
 from dataclasses import dataclass
@@ -32,25 +34,26 @@ class ViewerRun:
     sticky_chance: float = 0.0
 
 
-def _race(game: Game, environment: Environment, network: DriverNetwork) -> str:
-    """Drive one race, rolling the dice on the odds. Returns how it went."""
+def _race(game: Game, environment: Environment, network: DriverNetwork, test_lap: bool = False) -> str:
+    """Drive one race, rolling the dice on the odds, or with the likeliest buttons for a test lap.
+    Returns how it went."""
     observation: np.ndarray = environment.reset()
     best_progress, best_decision = 0.0, 0
     while not game.window_closed():
         with torch.no_grad():
             odds, _ = network(torch.as_tensor(observation[None]))
-        step = environment.step(int(odds.sample()))
+        step = environment.step(int(odds.probs.argmax() if test_lap else odds.sample()))
         observation = step.observation
         if step.progress > best_progress + STUCK_PROGRESS:
             best_progress, best_decision = step.progress, step.decisions
         if step.finished:
             return f"FINISHED in {step.race_seconds:.2f}s"
-        if step.out_of_time or step.decisions - best_decision >= STUCK_DECISIONS:
+        if step.out_of_time or (not test_lap and step.decisions - best_decision >= STUCK_DECISIONS):
             return f"reached {step.progress:.1%} of the race"
     return "window closed"
 
 
-def run_viewer(brain: Callable[[], Path] = lambda: LATEST_CHECKPOINT) -> None:
+def run_viewer(brain: Callable[[], Path] = lambda: LATEST_CHECKPOINT, test_lap: bool = False) -> None:
     """Race over and over. `brain` says which saved AI to drive, and it's asked again before every
     race, so a newer file, or a file that was replaced, is picked up for the next race."""
     torch.set_num_threads(1)
@@ -71,7 +74,7 @@ def run_viewer(brain: Callable[[], Path] = lambda: LATEST_CHECKPOINT) -> None:
                 game.advance(60)
                 continue
             number += 1
-            print(f"viewer race {number}, {_describe(file)}: {_race(game, race_for(network, race), network)}", flush=True)
+            print(f"viewer race {number}, {_describe(file)}: {_race(game, race_for(network, race), network, test_lap)}", flush=True)
 
 
 def _describe(file: Path) -> str:

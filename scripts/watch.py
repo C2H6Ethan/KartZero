@@ -7,6 +7,8 @@ Usage:
   python scripts/watch.py --run sticky0.5          one run, always its newest saved version: each race uses the newest
   python scripts/watch.py --hours 30               the version nearest 30 hours of training, in the newest run
   python scripts/watch.py --hours 1 --run 0.25     the same, in one run
+  python scripts/watch.py --hours 5.9 --run start-practice --test-lap
+                                                   that version's exact test lap: the likeliest buttons, no dice
   python scripts/watch.py --compare                take turns between the sticky comparison runs, one race each
 
 A run can be named by its whole folder name, or the end of it, like 213453 or sticky0.25.
@@ -24,12 +26,12 @@ ROOT = Path(__file__).resolve().parent.parent
 ALL_RUNS = "*"
 
 
-def watch(brain: Optional[Callable[[], Path]] = None) -> None:
+def watch(brain: Optional[Callable[[], Path]] = None, test_lap: bool = False) -> None:
     """Race over and over. `brain` says which saved AI to drive, asked again before every race."""
     # Loaded only here, because PyTorch and the emulator are slow to load and --list needs neither.
     from kartzero.viewer import LATEST_CHECKPOINT, run_viewer
 
-    run_viewer(brain or (lambda: LATEST_CHECKPOINT))
+    run_viewer(brain or (lambda: LATEST_CHECKPOINT), test_lap)
 
 
 def newest_version(run: TrainingRun) -> Path:
@@ -111,6 +113,7 @@ def main() -> None:
     )
     parser.add_argument("--run", help="which run to watch, for --hours or on its own")
     parser.add_argument("--hours", type=float, help="watch the version nearest this many hours of training")
+    parser.add_argument("--test-lap", action="store_true", help="drive like a test lap: the likeliest buttons, no dice")
     parser.add_argument("--compare", action="store_true", help="take turns between the sticky comparison runs")
     arguments = parser.parse_args()
 
@@ -128,13 +131,13 @@ def main() -> None:
             run = runs[-1]
             if arguments.hours is None:
                 print(f"watching {run.name}, each race with its newest saved version")
-                watch(lambda: newest_version(run))
+                watch(lambda: newest_version(run), arguments.test_lap)
             else:
                 version = run.versions.closest_to(arguments.hours * 60)
                 print(f"watching {run.name} after {training_time(version.minutes)} of training, {version.decisions:,} decisions")
-                watch(lambda: version.file)
+                watch(lambda: version.file, arguments.test_lap)
         else:
-            watch()
+            watch(test_lap=arguments.test_lap)
     except ValueError as error:
         raise SystemExit(str(error))
 
