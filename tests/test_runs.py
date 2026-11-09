@@ -96,3 +96,36 @@ def test_a_run_lists_only_the_learning_settings_it_changed(tmp_path):
 def test_a_run_with_default_settings_says_so(tmp_path):
     make_run(tmp_path, "run")
     assert find_run("run", tmp_path).changed_settings() == "defaults"
+
+
+def write_log(folder, rows):
+    """A log.csv with the given (decisions, start_practice_progress) rows."""
+    lines = ["decisions,average_reward,start_practice_progress"]
+    lines += [f"{decisions},1.0,{progress}" for decisions, progress in rows]
+    (folder / "log.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_start_practice_is_averaged_over_the_rounds_leading_up_to_each_version(tmp_path):
+    folder = make_run(tmp_path, "run", {"start_practice_emulators": 2}, laps=[None, None, None])
+    # Versions at 0, 25,000 and 50,000 decisions.
+    write_log(folder, [(10_000, 0.004), (20_000, 0.006), (30_000, "nan"), (40_000, 0.010), (50_000, 0.020)])
+    by_version = find_run("run", tmp_path).start_practice_by_version()
+    assert list(by_version.values()) == pytest.approx([0.005, 0.015])  # the start version has no rounds before it
+    assert all(name.endswith(".pt") for name in by_version)
+
+
+def test_a_run_without_start_practice_has_none(tmp_path):
+    folder = make_run(tmp_path, "run", laps=[None, None])
+    write_log(folder, [(10_000, "nan"), (20_000, "nan")])
+    assert find_run("run", tmp_path).start_practice_by_version() == {}
+
+
+def test_a_run_from_before_start_practice_has_none(tmp_path):
+    folder = make_run(tmp_path, "run", laps=[None, None])
+    (folder / "log.csv").write_text("decisions,average_reward\n10000,1.0\n")
+    assert find_run("run", tmp_path).start_practice_by_version() == {}
+
+
+def test_start_practice_has_a_short_name(tmp_path):
+    make_run(tmp_path, "run", {"start_practice_emulators": 2})
+    assert find_run("run", tmp_path).changed_settings() == "start practice 2"

@@ -84,16 +84,23 @@ def list_versions(run: TrainingRun) -> None:
     print(f"{run.name}: {run.changed_settings()}, started from {run.started_from()}\n")
     test_laps = run.versions.test_laps()
     best = run.best_test_lap()
-    print("training time    decisions   practice progress   test lap   mini-turbos")
+    starts = run.start_practice_by_version()
+    if starts:
+        # In the 75-decision races of the countdown setup: 0.0198 is the full start boost, 0.0051 a
+        # plain start at GO, and about 0 a stall. Practice rolls the dice, so it stays below the best.
+        print("start practice: progress 2 s after GO, 0.0198 = full start boost, 0.0051 = plain start\n")
+    print("training time    decisions   practice progress   test lap   mini-turbos" + ("   start practice" if starts else ""))
     for version in run.versions.all():
         progress = "-" if math.isnan(version.average_end_progress) else f"{version.average_end_progress:.1%}"
         marks = "  best" if best and best[0].file == version.file else ""
         marks += "  start" if version.decisions == 0 else ""
         lap = test_laps.get(version.file.name)
         mini_turbos = "-" if lap is None or lap.mini_turbos is None else str(lap.mini_turbos)
+        start = f"{starts[version.file.name]:.4f}" if version.file.name in starts else "-"
+        start_column = f"   {start:>14}" if starts else ""
         print(
             f"{training_time(version.minutes)}  {version.decisions:11,}   {progress:>17}   "
-            f"{lap_text(lap):>8}   {mini_turbos:>11}{marks}"
+            f"{lap_text(lap):>8}   {mini_turbos:>11}{start_column}{marks}"
         )
 
 

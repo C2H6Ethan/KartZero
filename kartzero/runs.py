@@ -1,6 +1,8 @@
 """Finds the training runs in runs/ and sums each one up, without loading PyTorch or the emulator."""
 
+import csv
 import json
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,6 +20,8 @@ SHORT_NAMES = {
     "curiosity_weight": "curiosity",
     "curiosity_learning_rate": "student rate",
     "curiosity_fade_decisions": "fade",
+    "start_practice_emulators": "start practice",
+    "start_practice_decisions": "start practice length",
 }
 
 
@@ -59,6 +63,27 @@ class TrainingRun:
         """Every version that has a test lap, oldest first."""
         laps = self.versions.test_laps()
         return [(version, laps[version.file.name]) for version in self.versions.all() if version.file.name in laps]
+
+    def start_practice_by_version(self) -> dict[str, float]:
+        """Where start-practice races got to, averaged over the rounds since the version before, by
+        version file name. Empty for runs without start practice."""
+        log = self.folder / "log.csv"
+        if not log.exists():
+            return {}
+        with log.open(newline="") as file:
+            rows = [
+                (float(row["decisions"]), float(row["start_practice_progress"]))
+                for row in csv.DictReader(file)
+                if row.get("start_practice_progress") not in (None, "")
+            ]
+        result: dict[str, float] = {}
+        previous = -math.inf
+        for version in self.versions.all():
+            reached = [p for d, p in rows if previous < d <= version.decisions and not math.isnan(p)]
+            if reached:
+                result[version.file.name] = sum(reached) / len(reached)
+            previous = version.decisions
+        return result
 
     def best_test_lap(self) -> Optional[tuple[Version, LapResult]]:
         """The fastest finish, or the furthest lap if none finished. The starting version doesn't count,
